@@ -6,6 +6,7 @@ accountcrendentials.md
 NOTES.md
 target/
 data/
+frontend/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
