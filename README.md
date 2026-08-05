@@ -1,6 +1,6 @@
-# AI Social Media Content Planner
+# AI Social Media Content Planner — Backend
 
-A multi-provider AI content generation, scheduling, and publishing platform built with Java 21, Spring Boot, React, PostgreSQL, and Flyway.
+Spring Boot backend for a multi-provider AI content generation, scheduling, and publishing platform built with Java 21, PostgreSQL, and Flyway.
 
 The application manages the complete lifecycle of social media content: source ingestion, AI-assisted generation, draft editing, scheduling, and publishing to supported platforms.
 
@@ -31,13 +31,6 @@ The application manages the complete lifecycle of social media content: source i
 - Springdoc OpenAPI
 - Logback and Logstash Encoder
 
-### Frontend
-
-- React 19
-- Vite
-- Tailwind CSS 4
-- pnpm
-
 ## Architecture
 
 The backend follows a layered DDD structure:
@@ -59,8 +52,6 @@ Domain entities contain their own state-transition rules. Content status cannot 
 
 - JDK 21
 - PostgreSQL 16
-- Node.js
-- pnpm
 
 ### Configuration
 
@@ -86,19 +77,8 @@ Place the generated value in `CREDENTIAL_ENCRYPTION_KEY`. Keep `AI_PROVIDER_MODE
 
 Flyway applies the database migrations automatically during startup.
 
-### Frontend
-
-```bash
-cd frontend
-pnpm install
-pnpm dev
-```
-
-The frontend development server proxies `/api` requests to the backend at `http://localhost:8080` by default.
-
 ## Local URLs
 
-- Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8080`
 - Swagger UI: `http://localhost:8080/swagger-ui/index.html`
 - OpenAPI specification: `http://localhost:8080/api-docs`
@@ -112,6 +92,10 @@ PUBLISHING_MODE=mock
 ```
 
 Use `mock` for local development. Switching either value to `real` enables the corresponding external clients without requiring code changes. Real mode requires valid encrypted credentials to be registered through the credential management API.
+
+## Frontend
+
+The React user interface is maintained in the [AI Social Media Content Planner Frontend](https://github.com/BurakTekins/ai-social-media-content-planner-frontend) repository.
 
 ## Security Notes
 
