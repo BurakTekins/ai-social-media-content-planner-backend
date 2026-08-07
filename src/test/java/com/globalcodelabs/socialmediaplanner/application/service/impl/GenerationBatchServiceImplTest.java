@@ -2,6 +2,7 @@ package com.globalcodelabs.socialmediaplanner.application.service.impl;
 
 import com.globalcodelabs.socialmediaplanner.application.command.CreateGenerationBatchCommand;
 import com.globalcodelabs.socialmediaplanner.application.port.out.storage.DocumentStorage;
+import com.globalcodelabs.socialmediaplanner.application.service.GenerationBudgetPolicy;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.common.exception.GenerationBatchNotFoundException;
 import com.globalcodelabs.socialmediaplanner.common.exception.GenerationBatchRetryConflictException;
@@ -44,6 +45,9 @@ class GenerationBatchServiceImplTest {
     @Mock
     private DocumentStorage documentStorage;
 
+    @Mock
+    private GenerationBudgetPolicy generationBudgetPolicy;
+
     private GenerationBatchServiceImpl generationBatchService;
 
     @BeforeEach
@@ -52,7 +56,8 @@ class GenerationBatchServiceImplTest {
                 generationBatchRepository,
                 generationAttemptRepository,
                 documentStorage,
-                (provider, capability) -> true
+                (provider, capability) -> true,
+                generationBudgetPolicy
         );
     }
 
@@ -136,7 +141,8 @@ class GenerationBatchServiceImplTest {
                 generationBatchRepository,
                 generationAttemptRepository,
                 documentStorage,
-                (provider, capability) -> capability != AiCapability.VIDEO
+                (provider, capability) -> capability != AiCapability.VIDEO,
+                generationBudgetPolicy
         );
         CreateGenerationBatchCommand command = new CreateGenerationBatchCommand(
                 Platform.INSTAGRAM,

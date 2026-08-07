@@ -59,6 +59,17 @@ models-dev:
     cron: "${MODELS_DEV_SYNC_CRON:0 0 3 * * *}"
     zone: ${MODELS_DEV_SYNC_ZONE:Europe/Istanbul}
 
+generation:
+  budget:
+    max-contents-per-batch: ${GENERATION_MAX_CONTENTS_PER_BATCH:50}
+    max-images-per-batch: ${GENERATION_MAX_IMAGES_PER_BATCH:50}
+    max-videos-per-batch: ${GENERATION_MAX_VIDEOS_PER_BATCH:10}
+    max-estimated-cost-usd: ${GENERATION_MAX_ESTIMATED_COST_USD:15.00}
+    estimated-cost-usd:
+      text-per-item: ${GENERATION_ESTIMATED_TEXT_COST_USD:0.01}
+      image-per-item: ${GENERATION_ESTIMATED_IMAGE_COST_USD:0.10}
+      video-per-item: ${GENERATION_ESTIMATED_VIDEO_COST_USD:1.00}
+
 publishing:
   mode: ${PUBLISHING_MODE:mock}
   connect-timeout: ${PUBLISHING_CONNECT_TIMEOUT:5s}

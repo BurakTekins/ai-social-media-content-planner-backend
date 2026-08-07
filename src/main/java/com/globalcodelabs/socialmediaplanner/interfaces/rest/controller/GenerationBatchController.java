@@ -4,6 +4,7 @@ import com.globalcodelabs.socialmediaplanner.application.command.CreateGeneratio
 import com.globalcodelabs.socialmediaplanner.application.command.UploadedDocument;
 import com.globalcodelabs.socialmediaplanner.application.service.GenerationBatchProcessingService;
 import com.globalcodelabs.socialmediaplanner.application.service.GenerationBatchService;
+import com.globalcodelabs.socialmediaplanner.application.service.GenerationBudgetPolicy;
 import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatchStatus;
@@ -12,6 +13,7 @@ import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.AiModelSele
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.CreateGenerationBatchRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBatchResponse;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBatchPageResponse;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBudgetResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -42,6 +44,7 @@ public class GenerationBatchController {
 
     private final GenerationBatchService generationBatchService;
     private final GenerationBatchProcessingService generationBatchProcessingService;
+    private final GenerationBudgetPolicy generationBudgetPolicy;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<GenerationBatchResponse> create(
@@ -56,6 +59,11 @@ public class GenerationBatchController {
     @GetMapping("/{batchId}")
     public GenerationBatchResponse get(@PathVariable UUID batchId) {
         return GenerationBatchResponse.from(generationBatchService.get(batchId));
+    }
+
+    @GetMapping("/budget")
+    public GenerationBudgetResponse getBudgetPolicy() {
+        return GenerationBudgetResponse.from(generationBudgetPolicy.limits());
     }
 
     @PostMapping("/{batchId}/retry")

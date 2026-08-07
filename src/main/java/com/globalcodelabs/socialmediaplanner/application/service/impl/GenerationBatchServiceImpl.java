@@ -6,6 +6,7 @@ import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderC
 import com.globalcodelabs.socialmediaplanner.application.port.out.storage.DocumentStorage;
 import com.globalcodelabs.socialmediaplanner.application.port.out.storage.StoredDocument;
 import com.globalcodelabs.socialmediaplanner.application.service.GenerationBatchService;
+import com.globalcodelabs.socialmediaplanner.application.service.GenerationBudgetPolicy;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.common.exception.GenerationBatchNotFoundException;
 import com.globalcodelabs.socialmediaplanner.common.exception.GenerationBatchRetryConflictException;
@@ -36,6 +37,7 @@ public class GenerationBatchServiceImpl implements GenerationBatchService {
     private final GenerationAttemptRepository generationAttemptRepository;
     private final DocumentStorage documentStorage;
     private final AiProviderCapabilityResolver aiProviderCapabilityResolver;
+    private final GenerationBudgetPolicy generationBudgetPolicy;
 
     @Override
     @Transactional
@@ -45,6 +47,11 @@ public class GenerationBatchServiceImpl implements GenerationBatchService {
         if (links.isEmpty() && documents.isEmpty()) {
             throw new DomainException("At least one link or document is required");
         }
+        generationBudgetPolicy.validate(
+                command.requestedCount(),
+                command.includeImage(),
+                command.includeVideo()
+        );
         requireCapability(command.textProvider(), AiCapability.TEXT);
         if (command.includeImage()) {
             requireCapability(command.imageProvider(), AiCapability.IMAGE);
