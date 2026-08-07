@@ -30,6 +30,23 @@ public interface ContentService {
 
     Content updateDraft(UUID contentId, String text, List<String> hashtags);
 
+    Content applyGeneratedText(
+            UUID contentId,
+            String text,
+            List<String> hashtags,
+            String provider,
+            String model
+    );
+
+    Content applyGeneratedMedia(
+            UUID contentId,
+            MediaType mediaType,
+            String storageKey,
+            String publicUrl,
+            String provider,
+            String model
+    );
+
     Content replaceDraftMedia(UUID contentId, MediaType mediaType, UploadedMedia uploadedMedia);
 
     Content removeDraftMedia(UUID contentId, MediaType mediaType);

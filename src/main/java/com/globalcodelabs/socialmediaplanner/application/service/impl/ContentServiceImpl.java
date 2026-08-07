@@ -82,6 +82,48 @@ public class ContentServiceImpl implements ContentService {
 
     @Override
     @Transactional
+    public Content applyGeneratedText(
+            UUID contentId,
+            String text,
+            List<String> hashtags,
+            String provider,
+            String model
+    ) {
+        Content content = findRequiredWithMedia(contentId);
+        content.updateDraft(text, hashtags);
+        content.recordTextGeneration(provider, model);
+        log.info("Draft text regenerated contentId={} provider={} model={}",
+                contentId, provider, model);
+        return content;
+    }
+
+    @Override
+    @Transactional
+    public Content applyGeneratedMedia(
+            UUID contentId,
+            MediaType mediaType,
+            String storageKey,
+            String publicUrl,
+            String provider,
+            String model
+    ) {
+        Content content = findRequiredWithMedia(contentId);
+        String replacedStorageKey = content.replaceMedia(
+                mediaType,
+                storageKey,
+                publicUrl,
+                provider,
+                model
+        );
+        contentRepository.saveAndFlush(content);
+        deleteAfterCommit(replacedStorageKey);
+        log.info("Draft media regenerated contentId={} mediaType={} provider={} model={}",
+                contentId, mediaType, provider, model);
+        return content;
+    }
+
+    @Override
+    @Transactional
     public Content replaceDraftMedia(UUID contentId, MediaType mediaType, UploadedMedia uploadedMedia) {
         Content content = findRequiredWithMedia(contentId);
         StoredMedia storedMedia = mediaStorage.store(

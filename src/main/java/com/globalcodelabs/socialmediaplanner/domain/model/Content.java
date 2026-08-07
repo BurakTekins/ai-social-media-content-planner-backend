@@ -275,6 +275,10 @@ public class Content {
         requireDraftOperation("Only draft content can be deleted");
     }
 
+    public void ensureRegeneratable() {
+        requireDraftOperation("Only draft content can be regenerated");
+    }
+
     public void markPublished() {
         requireStatus(ContentStatus.SCHEDULED, ContentStatus.PUBLISHED);
 

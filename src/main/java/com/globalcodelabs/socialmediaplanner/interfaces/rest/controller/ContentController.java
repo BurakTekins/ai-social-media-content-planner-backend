@@ -3,12 +3,14 @@ package com.globalcodelabs.socialmediaplanner.interfaces.rest.controller;
 import com.globalcodelabs.socialmediaplanner.application.command.UploadedMedia;
 import com.globalcodelabs.socialmediaplanner.application.port.out.storage.StoredMediaContent;
 import com.globalcodelabs.socialmediaplanner.application.service.ContentService;
+import com.globalcodelabs.socialmediaplanner.application.service.DraftRegenerationService;
 import com.globalcodelabs.socialmediaplanner.application.service.PublishingService;
 import com.globalcodelabs.socialmediaplanner.domain.model.Content;
 import com.globalcodelabs.socialmediaplanner.domain.model.ContentStatus;
 import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
 import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.CreateContentRequest;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.AiModelSelectionRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.ScheduleContentRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.UpdateDraftContentRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.ContentPageResponse;
@@ -53,6 +55,7 @@ import java.util.UUID;
 public class ContentController {
 
     private final ContentService contentService;
+    private final DraftRegenerationService draftRegenerationService;
     private final PublishingService publishingService;
 
     @PostMapping
@@ -115,6 +118,36 @@ public class ContentController {
     ) {
         return ContentResponse.from(
                 contentService.updateDraft(contentId, request.text(), request.hashtags())
+        );
+    }
+
+    @PostMapping("/{contentId}/regenerate/text")
+    public ContentResponse regenerateText(
+            @PathVariable UUID contentId,
+            @Valid @RequestBody AiModelSelectionRequest request
+    ) {
+        return ContentResponse.from(
+                draftRegenerationService.regenerateText(
+                        contentId,
+                        request.provider(),
+                        request.model()
+                )
+        );
+    }
+
+    @PostMapping("/{contentId}/regenerate/media/{mediaType}")
+    public ContentResponse regenerateMedia(
+            @PathVariable UUID contentId,
+            @PathVariable MediaType mediaType,
+            @Valid @RequestBody AiModelSelectionRequest request
+    ) {
+        return ContentResponse.from(
+                draftRegenerationService.regenerateMedia(
+                        contentId,
+                        mediaType,
+                        request.provider(),
+                        request.model()
+                )
         );
     }
 
