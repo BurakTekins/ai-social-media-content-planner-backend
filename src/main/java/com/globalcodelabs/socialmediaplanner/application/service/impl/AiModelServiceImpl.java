@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.application.service.impl;
 
 import com.globalcodelabs.socialmediaplanner.application.port.out.aimodel.ModelsDevCatalogClient.ModelData;
+import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderCapabilityResolver;
 import com.globalcodelabs.socialmediaplanner.application.service.AiModelService;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
@@ -33,6 +34,7 @@ public class AiModelServiceImpl implements AiModelService {
     );
 
     private final AiModelCacheRepository aiModelCacheRepository;
+    private final AiProviderCapabilityResolver aiProviderCapabilityResolver;
 
     @Override
     @Transactional(readOnly = true)
@@ -40,7 +42,11 @@ public class AiModelServiceImpl implements AiModelService {
         return aiModelCacheRepository.findAllByFilters(
                 capability,
                 normalizeProviderFilter(provider)
-        );
+        ).stream()
+                .filter(model -> aiProviderCapabilityResolver.supports(
+                        model.providerName(), model.capability()
+                ))
+                .toList();
     }
 
     @Override
@@ -56,8 +62,10 @@ public class AiModelServiceImpl implements AiModelService {
             providerNames.add(normalizeProvider(model.providerName()));
         }
 
+        List<AiModelCache> existingModelList = aiModelCacheRepository
+                .findAllByProviderNameIn(providerNames);
         Map<ModelKey, AiModelCache> existingModels = new HashMap<>();
-        for (AiModelCache model : aiModelCacheRepository.findAllByProviderNameIn(providerNames)) {
+        for (AiModelCache model : existingModelList) {
             existingModels.put(
                     new ModelKey(model.providerName(), model.modelId(), model.capability()),
                     model
@@ -96,6 +104,14 @@ public class AiModelServiceImpl implements AiModelService {
             modelsToSave.add(cachedModel);
         }
 
+        List<AiModelCache> obsoleteModels = existingModelList.stream()
+                .filter(model -> !synchronizedKeys.contains(new ModelKey(
+                        model.providerName(), model.modelId(), model.capability()
+                )))
+                .toList();
+        if (!obsoleteModels.isEmpty()) {
+            aiModelCacheRepository.deleteAll(obsoleteModels);
+        }
         aiModelCacheRepository.saveAll(modelsToSave);
         return modelsToSave.size();
     }

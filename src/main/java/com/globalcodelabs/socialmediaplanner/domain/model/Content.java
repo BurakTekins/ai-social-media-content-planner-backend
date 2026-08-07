@@ -30,11 +30,14 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "content")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Content {
+
+    private static final int TWITTER_MAX_CHARACTERS = 280;
 
     @Id
     private UUID id;
@@ -108,6 +111,7 @@ public class Content {
         validatePlatformContentType(this.platform, this.contentType);
         this.text = requireText(text);
         this.hashtags = sanitizeHashtags(hashtags);
+        validatePublicationText(this.platform, this.text, this.hashtags);
         this.batchId = batchId;
         this.generationIndex = generationIndex;
         this.status = ContentStatus.DRAFT;
@@ -218,6 +222,7 @@ public class Content {
 
         String updatedText = text == null ? this.text : requireText(text);
         String[] updatedHashtags = hashtags == null ? this.hashtags : sanitizeHashtags(hashtags);
+        validatePublicationText(platform, updatedText, updatedHashtags);
 
         this.text = updatedText;
         this.hashtags = updatedHashtags;
@@ -227,6 +232,7 @@ public class Content {
     public void schedule(OffsetDateTime scheduledAt) {
         requireStatus(ContentStatus.DRAFT, ContentStatus.SCHEDULED);
         validateScheduledAt(scheduledAt);
+        validatePublicationText(platform, text, hashtags);
 
         this.status = ContentStatus.SCHEDULED;
         this.scheduledAt = scheduledAt;
@@ -402,6 +408,30 @@ public class Content {
             throw new DomainException("Hashtags cannot contain blank values");
         }
         return hashtags.stream().map(String::trim).toArray(String[]::new);
+    }
+
+    private static void validatePublicationText(Platform platform, String text, String[] hashtags) {
+        if (platform != Platform.TWITTER) {
+            return;
+        }
+        String formattedText = formatPublicationText(text, hashtags);
+        int characterCount = formattedText.codePointCount(0, formattedText.length());
+        if (characterCount > TWITTER_MAX_CHARACTERS) {
+            throw new DomainException(
+                    "Twitter content including hashtags cannot exceed "
+                            + TWITTER_MAX_CHARACTERS + " characters"
+            );
+        }
+    }
+
+    private static String formatPublicationText(String text, String[] hashtags) {
+        if (hashtags.length == 0) {
+            return text;
+        }
+        String formattedHashtags = Arrays.stream(hashtags)
+                .map(hashtag -> hashtag.startsWith("#") ? hashtag : "#" + hashtag)
+                .collect(Collectors.joining(" "));
+        return text + "\n\n" + formattedHashtags;
     }
 
     private static String requireGenerationValue(String value, String message) {

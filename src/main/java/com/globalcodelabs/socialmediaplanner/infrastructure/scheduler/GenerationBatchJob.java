@@ -14,6 +14,7 @@ import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponse
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.Content;
+import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
 import com.globalcodelabs.socialmediaplanner.domain.model.ContentSource;
 import com.globalcodelabs.socialmediaplanner.domain.model.ContentSourceStatus;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttempt;
@@ -21,6 +22,7 @@ import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttemptStatu
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatchStatus;
 import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
 import com.globalcodelabs.socialmediaplanner.domain.repository.ContentRepository;
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationAttemptRepository;
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationBatchRepository;
@@ -315,15 +317,34 @@ public class GenerationBatchJob implements GenerationBatchProcessingService {
 
     private String buildTextPrompt(GenerationBatch batch, String sourceText, int index) {
         return """
-                Return only JSON with fields text and hashtags.
+                Generate one distinct social media content item using the supplied sources as common reference.
+                Return only valid JSON with exactly these fields: text (string) and hashtags (array of strings).
+                Do not wrap the JSON in Markdown or add explanations.
                 Platform: %s
                 Content type: %s
                 Content number: %d of %d
+                Platform requirements:
+                %s
                 Sources:
                 %s
                 """.formatted(
-                batch.platform(), batch.contentType(), index, batch.requestedCount(), sourceText
+                batch.platform(), batch.contentType(), index, batch.requestedCount(),
+                platformRequirements(batch.platform(), batch.contentType()), sourceText
         );
+    }
+
+    private static String platformRequirements(
+            Platform platform,
+            ContentType contentType
+    ) {
+        return switch (platform) {
+            case LINKEDIN -> "Use a professional, informative tone suitable for a LinkedIn post.";
+            case INSTAGRAM -> contentType == ContentType.REEL
+                    ? "Write a short, high-impact caption that complements video-first Reel content."
+                    : "Write a concise, engaging caption suitable for a visual Instagram feed post.";
+            case TWITTER -> "Keep the final text and hashtags together within 280 characters. "
+                    + "Use a concise Tweet format.";
+        };
     }
 
     private GeneratedText parseGeneratedText(String output) {

@@ -1,8 +1,11 @@
 package com.globalcodelabs.socialmediaplanner.application.service.impl;
 
+import com.globalcodelabs.socialmediaplanner.application.command.CreateGenerationBatchCommand;
 import com.globalcodelabs.socialmediaplanner.application.port.out.storage.DocumentStorage;
+import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.common.exception.GenerationBatchNotFoundException;
 import com.globalcodelabs.socialmediaplanner.common.exception.GenerationBatchRetryConflictException;
+import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttemptStatus;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
@@ -17,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -25,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,7 +51,8 @@ class GenerationBatchServiceImplTest {
         generationBatchService = new GenerationBatchServiceImpl(
                 generationBatchRepository,
                 generationAttemptRepository,
-                documentStorage
+                documentStorage,
+                (provider, capability) -> true
         );
     }
 
@@ -122,6 +128,41 @@ class GenerationBatchServiceImplTest {
 
         assertThat(batch.status()).isEqualTo(GenerationBatchStatus.FAILED);
         assertThat(batch.lastError()).isEqualTo("Generation job could not be queued");
+    }
+
+    @Test
+    void rejectsUnsupportedVideoProviderBeforePersistingOrStoringDocuments() {
+        GenerationBatchServiceImpl realModeService = new GenerationBatchServiceImpl(
+                generationBatchRepository,
+                generationAttemptRepository,
+                documentStorage,
+                (provider, capability) -> capability != AiCapability.VIDEO
+        );
+        CreateGenerationBatchCommand command = new CreateGenerationBatchCommand(
+                Platform.INSTAGRAM,
+                ContentType.REEL,
+                1,
+                false,
+                true,
+                "openai",
+                "text-model",
+                null,
+                null,
+                "gemini",
+                "video-model",
+                List.of("https://example.com/source"),
+                List.of()
+        );
+
+        assertThatThrownBy(() -> realModeService.create(command))
+                .isInstanceOf(DomainException.class)
+                .hasMessageContaining("VIDEO");
+
+        verifyNoInteractions(
+                generationBatchRepository,
+                generationAttemptRepository,
+                documentStorage
+        );
     }
 
     private static GenerationBatch failedBatch() {

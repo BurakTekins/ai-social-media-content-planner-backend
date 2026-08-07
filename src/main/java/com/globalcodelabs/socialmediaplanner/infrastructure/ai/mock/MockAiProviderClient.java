@@ -57,21 +57,35 @@ public class MockAiProviderClient implements AiProviderClient {
     private String createMockOutput(AiGenerationRequest request) {
         String fingerprint = Integer.toUnsignedString(request.prompt().hashCode(), 16);
         return switch (request.capability()) {
-            case TEXT -> createTextOutput(request.provider(), fingerprint);
+            case TEXT -> createTextOutput(request.provider(), request.prompt(), fingerprint);
             case IMAGE -> "mock://" + request.provider() + "/image/" + fingerprint + ".png";
             case VIDEO -> "mock://" + request.provider() + "/video/" + fingerprint + ".mp4";
         };
     }
 
-    private String createTextOutput(String provider, String fingerprint) {
+    private String createTextOutput(String provider, String prompt, String fingerprint) {
         try {
             return objectMapper.writeValueAsString(new MockTextOutput(
-                    "Mock " + provider + " generated content " + fingerprint,
-                    new String[]{"#mock", "#ai", "#" + provider}
+                    mockText(prompt, fingerprint),
+                    new String[]{"#ai", "#socialmedia", "#" + provider}
             ));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not create mock AI response", exception);
         }
+    }
+
+    private static String mockText(String prompt, String fingerprint) {
+        if (prompt.contains("Platform: TWITTER")) {
+            return "AI destekli içerik planlamayla daha tutarlı paylaşımlar üretin. " + fingerprint;
+        }
+        if (prompt.contains("Content type: REEL")) {
+            return "Fikrinizi saniyeler içinde dikkat çekici bir Reele dönüştürün. " + fingerprint;
+        }
+        if (prompt.contains("Platform: INSTAGRAM")) {
+            return "Markanızın hikâyesini yaratıcı ve etkileyici içeriklerle paylaşın. " + fingerprint;
+        }
+        return "İçerik üretim sürecinizi yapay zekâ ile planlı, tutarlı ve verimli hale getirin. "
+                + fingerprint;
     }
 
     private static long elapsedMilliseconds(long startedAt) {

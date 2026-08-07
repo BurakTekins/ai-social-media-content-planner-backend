@@ -157,6 +157,29 @@ class ContentTest {
     }
 
     @Test
+    void rejectsTwitterContentWhenTextAndHashtagsExceedCharacterLimit() {
+        String text = "x".repeat(271);
+
+        assertThatThrownBy(() -> Content.create(
+                Platform.TWITTER,
+                ContentType.TWEET,
+                text,
+                List.of("toolong"),
+                null
+        )).isInstanceOf(DomainException.class)
+                .hasMessageContaining("280");
+    }
+
+    @Test
+    void rejectsDraftUpdateThatExceedsTwitterCharacterLimit() {
+        Content content = create(Platform.TWITTER, ContentType.TWEET);
+
+        assertThatThrownBy(() -> content.updateDraft("x".repeat(281), List.of()))
+                .isInstanceOf(DomainException.class)
+                .hasMessageContaining("280");
+    }
+
+    @Test
     void allowsOneMediaItemPerMediaType() {
         Content content = create(Platform.INSTAGRAM, ContentType.REEL);
         content.addMedia(

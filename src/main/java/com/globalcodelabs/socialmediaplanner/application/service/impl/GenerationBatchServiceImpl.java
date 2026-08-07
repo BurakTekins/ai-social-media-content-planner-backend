@@ -2,6 +2,7 @@ package com.globalcodelabs.socialmediaplanner.application.service.impl;
 
 import com.globalcodelabs.socialmediaplanner.application.command.CreateGenerationBatchCommand;
 import com.globalcodelabs.socialmediaplanner.application.command.UploadedDocument;
+import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderCapabilityResolver;
 import com.globalcodelabs.socialmediaplanner.application.port.out.storage.DocumentStorage;
 import com.globalcodelabs.socialmediaplanner.application.port.out.storage.StoredDocument;
 import com.globalcodelabs.socialmediaplanner.application.service.GenerationBatchService;
@@ -9,6 +10,7 @@ import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.common.exception.GenerationBatchNotFoundException;
 import com.globalcodelabs.socialmediaplanner.common.exception.GenerationBatchRetryConflictException;
 import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttemptStatus;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatchStatus;
@@ -33,6 +35,7 @@ public class GenerationBatchServiceImpl implements GenerationBatchService {
     private final GenerationBatchRepository generationBatchRepository;
     private final GenerationAttemptRepository generationAttemptRepository;
     private final DocumentStorage documentStorage;
+    private final AiProviderCapabilityResolver aiProviderCapabilityResolver;
 
     @Override
     @Transactional
@@ -41,6 +44,13 @@ public class GenerationBatchServiceImpl implements GenerationBatchService {
         List<UploadedDocument> documents = command.documents() == null ? List.of() : command.documents();
         if (links.isEmpty() && documents.isEmpty()) {
             throw new DomainException("At least one link or document is required");
+        }
+        requireCapability(command.textProvider(), AiCapability.TEXT);
+        if (command.includeImage()) {
+            requireCapability(command.imageProvider(), AiCapability.IMAGE);
+        }
+        if (command.includeVideo()) {
+            requireCapability(command.videoProvider(), AiCapability.VIDEO);
         }
 
         GenerationBatch batch = GenerationBatch.create(
@@ -119,5 +129,14 @@ public class GenerationBatchServiceImpl implements GenerationBatchService {
             Pageable pageable
     ) {
         return generationBatchRepository.findAllByFilters(status, platform, contentType, pageable);
+    }
+
+    private void requireCapability(String providerName, AiCapability capability) {
+        if (!aiProviderCapabilityResolver.supports(providerName, capability)) {
+            throw new DomainException(
+                    "AI provider %s does not support %s generation in the configured mode"
+                            .formatted(providerName, capability)
+            );
+        }
     }
 }

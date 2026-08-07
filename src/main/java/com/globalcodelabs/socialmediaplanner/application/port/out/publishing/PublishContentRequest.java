@@ -44,6 +44,6 @@ public record PublishContentRequest(
         String formattedHashtags = hashtags.stream()
                 .map(hashtag -> hashtag.startsWith("#") ? hashtag : "#" + hashtag)
                 .collect(Collectors.joining(" "));
-        return text + System.lineSeparator() + System.lineSeparator() + formattedHashtags;
+        return text + "\n\n" + formattedHashtags;
     }
 }

@@ -2,6 +2,7 @@ package com.globalcodelabs.socialmediaplanner.application.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.globalcodelabs.socialmediaplanner.application.port.out.aimodel.ModelsDevCatalogClient.ModelData;
+import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderCapabilityResolver;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiModelCache;
@@ -36,11 +37,12 @@ class AiModelServiceImplTest {
     private AiModelCacheRepository aiModelCacheRepository;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final AiProviderCapabilityResolver allCapabilities = (provider, capability) -> true;
     private AiModelServiceImpl aiModelService;
 
     @BeforeEach
     void setUp() {
-        aiModelService = new AiModelServiceImpl(aiModelCacheRepository);
+        aiModelService = new AiModelServiceImpl(aiModelCacheRepository, allCapabilities);
     }
 
     @Test
@@ -123,6 +125,68 @@ class AiModelServiceImplTest {
         aiModelService.findAll(null, "google");
 
         verify(aiModelCacheRepository).findAllByFilters(null, "gemini");
+    }
+
+    @Test
+    void hidesCachedModelsThatConfiguredProviderModeCannotUse() throws Exception {
+        AiModelCache textModel = AiModelCache.create(
+                "openai",
+                "text-model",
+                "Text model",
+                AiCapability.TEXT,
+                objectMapper.readTree("{}"),
+                INITIAL_SYNCED_AT
+        );
+        AiModelCache videoModel = AiModelCache.create(
+                "openai",
+                "video-model",
+                "Video model",
+                AiCapability.VIDEO,
+                objectMapper.readTree("{}"),
+                INITIAL_SYNCED_AT
+        );
+        when(aiModelCacheRepository.findAllByFilters(null, null))
+                .thenReturn(List.of(textModel, videoModel));
+        AiModelServiceImpl realModeService = new AiModelServiceImpl(
+                aiModelCacheRepository,
+                (provider, capability) -> capability != AiCapability.VIDEO
+        );
+
+        List<AiModelCache> result = realModeService.findAll(null, null);
+
+        assertThat(result).containsExactly(textModel);
+    }
+
+    @Test
+    void removesModelsThatAreNoLongerPresentInSuccessfulSync() throws Exception {
+        AiModelCache obsolete = AiModelCache.create(
+                "openai",
+                "retired-model",
+                "Retired model",
+                AiCapability.TEXT,
+                objectMapper.readTree("{}"),
+                INITIAL_SYNCED_AT
+        );
+        AiModelCache current = AiModelCache.create(
+                "openai",
+                "current-model",
+                "Current model",
+                AiCapability.TEXT,
+                objectMapper.readTree("{}"),
+                INITIAL_SYNCED_AT
+        );
+        when(aiModelCacheRepository.findAllByProviderNameIn(anyCollection()))
+                .thenReturn(List.of(obsolete, current));
+
+        aiModelService.synchronize(List.of(new ModelData(
+                "openai",
+                "current-model",
+                "Current model",
+                AiCapability.TEXT,
+                objectMapper.readTree("{\"version\":2}")
+        )), NEW_SYNCED_AT);
+
+        verify(aiModelCacheRepository).deleteAll(List.of(obsolete));
     }
 
     @Test
