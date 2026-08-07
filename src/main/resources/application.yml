@@ -65,8 +65,11 @@ generation:
     max-images-per-batch: ${GENERATION_MAX_IMAGES_PER_BATCH:50}
     max-videos-per-batch: ${GENERATION_MAX_VIDEOS_PER_BATCH:10}
     max-estimated-cost-usd: ${GENERATION_MAX_ESTIMATED_COST_USD:15.00}
+    estimated-input-tokens-per-item: ${GENERATION_ESTIMATED_INPUT_TOKENS_PER_ITEM:2000}
+    estimated-output-tokens-per-item: ${GENERATION_ESTIMATED_OUTPUT_TOKENS_PER_ITEM:300}
     estimated-cost-usd:
-      text-per-item: ${GENERATION_ESTIMATED_TEXT_COST_USD:0.01}
+      fallback-text-input-per-million-tokens: ${GENERATION_FALLBACK_TEXT_INPUT_USD_PER_MILLION_TOKENS:3.00}
+      fallback-text-output-per-million-tokens: ${GENERATION_FALLBACK_TEXT_OUTPUT_USD_PER_MILLION_TOKENS:15.00}
       image-per-item: ${GENERATION_ESTIMATED_IMAGE_COST_USD:0.10}
       video-per-item: ${GENERATION_ESTIMATED_VIDEO_COST_USD:1.00}
 

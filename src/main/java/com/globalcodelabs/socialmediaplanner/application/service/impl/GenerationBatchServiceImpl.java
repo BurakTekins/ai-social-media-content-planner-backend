@@ -47,11 +47,13 @@ public class GenerationBatchServiceImpl implements GenerationBatchService {
         if (links.isEmpty() && documents.isEmpty()) {
             throw new DomainException("At least one link or document is required");
         }
-        generationBudgetPolicy.validate(
+        generationBudgetPolicy.validate(new GenerationBudgetPolicy.Request(
                 command.requestedCount(),
                 command.includeImage(),
-                command.includeVideo()
-        );
+                command.includeVideo(),
+                command.textProvider(),
+                command.textModel()
+        ));
         requireCapability(command.textProvider(), AiCapability.TEXT);
         if (command.includeImage()) {
             requireCapability(command.imageProvider(), AiCapability.IMAGE);

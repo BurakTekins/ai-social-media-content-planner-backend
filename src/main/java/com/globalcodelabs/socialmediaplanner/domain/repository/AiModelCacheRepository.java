@@ -8,11 +8,18 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface AiModelCacheRepository extends JpaRepository<AiModelCache, UUID> {
 
     List<AiModelCache> findAllByProviderNameIn(Collection<String> providerNames);
+
+    Optional<AiModelCache> findByProviderNameAndModelIdAndCapability(
+            String providerName,
+            String modelId,
+            AiCapability capability
+    );
 
     @Query("""
             SELECT model

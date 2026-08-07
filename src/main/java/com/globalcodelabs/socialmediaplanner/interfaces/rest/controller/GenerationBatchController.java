@@ -11,9 +11,11 @@ import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatchStatus;
 import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.AiModelSelectionRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.CreateGenerationBatchRequest;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.GenerationBudgetEstimateRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBatchResponse;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBatchPageResponse;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBudgetResponse;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBudgetEstimateResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -64,6 +67,21 @@ public class GenerationBatchController {
     @GetMapping("/budget")
     public GenerationBudgetResponse getBudgetPolicy() {
         return GenerationBudgetResponse.from(generationBudgetPolicy.limits());
+    }
+
+    @PostMapping("/budget/estimate")
+    public GenerationBudgetEstimateResponse estimateBudget(
+            @Valid @RequestBody GenerationBudgetEstimateRequest request
+    ) {
+        return GenerationBudgetEstimateResponse.from(
+                generationBudgetPolicy.estimate(new GenerationBudgetPolicy.Request(
+                        request.requestedCount(),
+                        request.includeImage(),
+                        request.includeVideo(),
+                        request.textModel().provider(),
+                        request.textModel().model()
+                ))
+        );
     }
 
     @PostMapping("/{batchId}/retry")

@@ -9,7 +9,10 @@ public record GenerationBudgetResponse(
         int maxImagesPerBatch,
         int maxVideosPerBatch,
         BigDecimal maxEstimatedCostUsd,
-        BigDecimal estimatedTextCostUsdPerItem,
+        int estimatedInputTokensPerItem,
+        int estimatedOutputTokensPerItem,
+        BigDecimal fallbackTextInputCostUsdPerMillionTokens,
+        BigDecimal fallbackTextOutputCostUsdPerMillionTokens,
         BigDecimal estimatedImageCostUsdPerItem,
         BigDecimal estimatedVideoCostUsdPerItem
 ) {
@@ -19,7 +22,10 @@ public record GenerationBudgetResponse(
                 limits.maxImagesPerBatch(),
                 limits.maxVideosPerBatch(),
                 limits.maxEstimatedCostUsd(),
-                limits.estimatedTextCostUsdPerItem(),
+                limits.estimatedInputTokensPerItem(),
+                limits.estimatedOutputTokensPerItem(),
+                limits.fallbackTextInputCostUsdPerMillionTokens(),
+                limits.fallbackTextOutputCostUsdPerMillionTokens(),
                 limits.estimatedImageCostUsdPerItem(),
                 limits.estimatedVideoCostUsdPerItem()
         );

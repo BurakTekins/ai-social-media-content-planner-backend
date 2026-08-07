@@ -34,13 +34,23 @@ public class GenerationBudgetProperties {
     @NotNull
     private EstimatedCostUsd estimatedCostUsd = new EstimatedCostUsd();
 
+    @Min(1)
+    private int estimatedInputTokensPerItem = 2_000;
+
+    @Min(1)
+    private int estimatedOutputTokensPerItem = 300;
+
     @Getter
     @Setter
     public static class EstimatedCostUsd {
 
         @NotNull
         @DecimalMin("0.00")
-        private BigDecimal textPerItem = new BigDecimal("0.01");
+        private BigDecimal fallbackTextInputPerMillionTokens = new BigDecimal("3.00");
+
+        @NotNull
+        @DecimalMin("0.00")
+        private BigDecimal fallbackTextOutputPerMillionTokens = new BigDecimal("15.00");
 
         @NotNull
         @DecimalMin("0.00")
