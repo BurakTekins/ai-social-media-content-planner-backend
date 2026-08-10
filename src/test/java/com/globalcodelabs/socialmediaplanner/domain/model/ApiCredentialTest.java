@@ -60,8 +60,8 @@ class ApiCredentialTest {
         assertThat(linkedin.accountIdentifier()).isEqualTo("urn:li:organization:456");
 
         ApiCredential twitter = create(CredentialType.SOCIAL_PLATFORM, "twitter", null);
-        twitter.updateAccountIdentifier("account-123");
-        assertThat(twitter.accountIdentifier()).isEqualTo("account-123");
+        twitter.updateAccountIdentifier("123456789");
+        assertThat(twitter.accountIdentifier()).isEqualTo("123456789");
 
         twitter.updateAccountIdentifier(null);
         assertThat(twitter.accountIdentifier()).isNull();

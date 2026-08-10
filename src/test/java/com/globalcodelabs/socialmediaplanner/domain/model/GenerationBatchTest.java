@@ -229,6 +229,33 @@ class GenerationBatchTest {
         assertThat(batch.videoModel()).isEqualTo("video-model");
     }
 
+    @Test
+    void defaultsToSourceBasedWhenSourceAndContentCountsMatch() {
+        GenerationBatch batch = createBatchWithStrategy(3, 3, null);
+
+        assertThat(batch.generationStrategy()).isEqualTo(GenerationStrategy.SOURCE_BASED);
+        assertThat(batch.strategySelectionReason()).contains("source count (3) equals requested content count (3)");
+        assertThat(batch.strategyWarning()).isNull();
+    }
+
+    @Test
+    void defaultsToCombinedWhenSourceAndContentCountsDiffer() {
+        GenerationBatch batch = createBatchWithStrategy(3, 1, null);
+
+        assertThat(batch.generationStrategy()).isEqualTo(GenerationStrategy.COMBINED);
+        assertThat(batch.strategySelectionReason()).contains("source count (1) differs from requested content count (3)");
+        assertThat(batch.strategyWarning()).isNull();
+    }
+
+    @Test
+    void warnsWhenSourceBasedIsExplicitlySelectedWithFewerSources() {
+        GenerationBatch batch = createBatchWithStrategy(3, 1, GenerationStrategy.SOURCE_BASED);
+
+        assertThat(batch.generationStrategy()).isEqualTo(GenerationStrategy.SOURCE_BASED);
+        assertThat(batch.strategySelectionReason()).isEqualTo("User selected SOURCE_BASED strategy.");
+        assertThat(batch.strategyWarning()).contains("sources will be reused round-robin");
+    }
+
     private static GenerationBatch createBatch(int requestedCount) {
         return createBatch(
                 Platform.LINKEDIN, ContentType.POST, requestedCount,
@@ -251,7 +278,20 @@ class GenerationBatchTest {
     ) {
         return GenerationBatch.create(
                 platform, contentType, requestedCount, includeImage, includeVideo,
-                textProvider, textModel, imageProvider, imageModel, videoProvider, videoModel
+                textProvider, textModel, imageProvider, imageModel, videoProvider, videoModel,
+                null, 1
+        );
+    }
+
+    private static GenerationBatch createBatchWithStrategy(
+            int requestedCount,
+            int sourceCount,
+            GenerationStrategy strategy
+    ) {
+        return GenerationBatch.create(
+                Platform.LINKEDIN, ContentType.POST, requestedCount,
+                false, false, "openai", "text-model", null, null, null, null,
+                strategy, sourceCount
         );
     }
 

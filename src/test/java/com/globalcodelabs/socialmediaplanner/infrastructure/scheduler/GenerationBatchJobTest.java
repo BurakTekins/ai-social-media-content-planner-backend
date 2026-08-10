@@ -182,7 +182,9 @@ class GenerationBatchJobTest {
                 null,
                 null,
                 null,
-                null
+                null,
+                null,
+                2
         );
         batch.addLinkSource("https://example.com/first");
         batch.addLinkSource("https://example.com/second");
@@ -384,7 +386,9 @@ class GenerationBatchJobTest {
                 null,
                 null,
                 null,
-                null
+                null,
+                null,
+                1
         );
         batch.addLinkSource("https://example.com/source");
         ContentSource source = batch.sources().getFirst();
@@ -405,7 +409,9 @@ class GenerationBatchJobTest {
                 "mock",
                 "image-model",
                 null,
-                null
+                null,
+                null,
+                1
         );
         batch.addLinkSource("https://example.com/source");
         ContentSource source = batch.sources().getFirst();

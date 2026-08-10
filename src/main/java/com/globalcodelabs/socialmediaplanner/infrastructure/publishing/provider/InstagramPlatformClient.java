@@ -18,6 +18,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.net.InetAddress;
 import java.net.URI;
@@ -83,6 +84,28 @@ public class InstagramPlatformClient implements SocialPlatformClient {
             throw exception;
         } finally {
             MdcUtil.removeProvider();
+        }
+    }
+
+    @Override
+    public boolean isPublished(String externalPostId, PlatformCredential credential) {
+        String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
+        String version = properties.requireVersion(PROVIDER_NAME);
+        try {
+            ContainerResponse response = restClientFactory.forBaseUrl(baseUrl)
+                    .get()
+                    .uri(restClientFactory.endpoint(
+                            baseUrl, version + "/" + externalPostId + "?fields=id"
+                    ))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                    .retrieve()
+                    .body(ContainerResponse.class);
+            return response != null && externalPostId.equals(response.id());
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == 404) {
+                return false;
+            }
+            throw exception;
         }
     }
 

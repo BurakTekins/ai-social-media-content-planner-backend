@@ -6,10 +6,19 @@ spring:
   config:
     import: optional:file:.env[.properties]
   datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: ${DB_MAX_POOL_SIZE:10}
       minimum-idle: ${DB_MIN_IDLE:2}
+      idle-timeout: ${DB_IDLE_TIMEOUT:300000}
+      connection-timeout: ${DB_CONN_TIMEOUT:30000}
+      max-lifetime: ${DB_MAX_LIFETIME:1800000}
+      validation-timeout: ${DB_VALIDATION_TIMEOUT:5000}
+      leak-detection-threshold: ${DB_LEAK_DETECTION:60000}
+      pool-name: ${DB_POOL_NAME:SocialMediaPlannerPool}
   jpa:
     show-sql: ${JPA_SHOW_SQL:false}
     properties:
@@ -34,6 +43,51 @@ app:
     link-timeout: ${LINK_EXTRACTION_TIMEOUT:15s}
     max-body-size-bytes: ${LINK_EXTRACTION_MAX_BODY_SIZE:2097152}
 
+platform-oauth:
+  x:
+    client-id: ${X_CLIENT_ID:}
+    client-secret: ${X_CLIENT_SECRET:}
+    redirect-uri: ${X_REDIRECT_URI:http://127.0.0.1:8080/api/integrations/x/callback}
+    frontend-redirect-uri: ${X_FRONTEND_REDIRECT_URI:http://127.0.0.1:5173/#/credentials}
+    authorization-uri: ${X_AUTHORIZATION_URI:https://x.com/i/oauth2/authorize}
+    token-uri: ${X_TOKEN_URI:https://api.x.com/2/oauth2/token}
+    user-info-uri: ${X_USER_INFO_URI:https://api.x.com/2/users/me?user.fields=id,name,username}
+    scopes: ${X_SCOPES:tweet.read users.read tweet.write media.write offline.access}
+    state-ttl: ${X_OAUTH_STATE_TTL:10m}
+    connect-timeout: ${X_OAUTH_CONNECT_TIMEOUT:5s}
+    read-timeout: ${X_OAUTH_READ_TIMEOUT:30s}
+  linkedin:
+    client-id: ${LINKEDIN_CLIENT_ID:}
+    client-secret: ${LINKEDIN_CLIENT_SECRET:}
+    redirect-uri: ${LINKEDIN_REDIRECT_URI:http://127.0.0.1:8080/api/integrations/linkedin/callback}
+    frontend-redirect-uri: ${LINKEDIN_FRONTEND_REDIRECT_URI:http://127.0.0.1:5173/#/credentials}
+    authorization-uri: ${LINKEDIN_AUTHORIZATION_URI:https://www.linkedin.com/oauth/v2/authorization}
+    token-uri: ${LINKEDIN_TOKEN_URI:https://www.linkedin.com/oauth/v2/accessToken}
+    user-info-uri: ${LINKEDIN_USER_INFO_URI:https://api.linkedin.com/v2/userinfo}
+    scopes: ${LINKEDIN_SCOPES:openid profile w_member_social}
+    state-ttl: ${LINKEDIN_OAUTH_STATE_TTL:10m}
+    connect-timeout: ${LINKEDIN_OAUTH_CONNECT_TIMEOUT:5s}
+    read-timeout: ${LINKEDIN_OAUTH_READ_TIMEOUT:30s}
+  instagram:
+    client-id: ${INSTAGRAM_CLIENT_ID:}
+    client-secret: ${INSTAGRAM_CLIENT_SECRET:}
+    redirect-uri: ${INSTAGRAM_REDIRECT_URI:http://127.0.0.1:8080/api/integrations/instagram/callback}
+    frontend-redirect-uri: ${INSTAGRAM_FRONTEND_REDIRECT_URI:http://127.0.0.1:5173/#/credentials}
+    authorization-uri: ${INSTAGRAM_AUTHORIZATION_URI:https://www.instagram.com/oauth/authorize}
+    token-uri: ${INSTAGRAM_TOKEN_URI:https://api.instagram.com/oauth/access_token}
+    long-lived-token-uri: ${INSTAGRAM_LONG_LIVED_TOKEN_URI:https://graph.instagram.com/access_token}
+    refresh-token-uri: ${INSTAGRAM_REFRESH_TOKEN_URI:https://graph.instagram.com/refresh_access_token}
+    user-info-uri: ${INSTAGRAM_USER_INFO_URI:https://graph.instagram.com/v26.0/me?fields=id,user_id,username,name,account_type}
+    scopes: ${INSTAGRAM_SCOPES:instagram_business_basic instagram_business_content_publish}
+    state-ttl: ${INSTAGRAM_OAUTH_STATE_TTL:10m}
+    connect-timeout: ${INSTAGRAM_OAUTH_CONNECT_TIMEOUT:5s}
+    read-timeout: ${INSTAGRAM_OAUTH_READ_TIMEOUT:30s}
+  refresh:
+    enabled: ${SOCIAL_TOKEN_REFRESH_ENABLED:true}
+    fixed-delay: ${SOCIAL_TOKEN_REFRESH_FIXED_DELAY:1h}
+    access-token-skew: ${SOCIAL_TOKEN_REFRESH_SKEW:5m}
+    instagram-refresh-before: ${INSTAGRAM_TOKEN_REFRESH_BEFORE:7d}
+
 ai-provider:
   mode: ${AI_PROVIDER_MODE:mock}
   connect-timeout: ${AI_CONNECT_TIMEOUT:5s}
@@ -55,6 +109,8 @@ models-dev:
   api-url: ${MODELS_DEV_API_URL:https://models.dev/api.json}
   connect-timeout: ${MODELS_DEV_CONNECT_TIMEOUT:5s}
   read-timeout: ${MODELS_DEV_READ_TIMEOUT:30s}
+  max-attempts: ${MODELS_DEV_MAX_ATTEMPTS:3}
+  retry-delay: ${MODELS_DEV_RETRY_DELAY:500ms}
   sync:
     cron: "${MODELS_DEV_SYNC_CRON:0 0 3 * * *}"
     zone: ${MODELS_DEV_SYNC_ZONE:Europe/Istanbul}
@@ -80,7 +136,10 @@ publishing:
   max-media-bytes: ${PUBLISHING_MAX_MEDIA_BYTES:536870912}
   max-media-redirects: ${PUBLISHING_MAX_MEDIA_REDIRECTS:5}
   job:
+    enabled: ${PUBLISHING_JOB_ENABLED:true}
     fixed-delay: ${PUBLISHING_JOB_FIXED_DELAY:30s}
+    confirmation-interval: ${PUBLISHING_CONFIRMATION_INTERVAL:30s}
+    confirmation-timeout: ${PUBLISHING_CONFIRMATION_TIMEOUT:15m}
     max-items-per-run: ${PUBLISHING_JOB_MAX_ITEMS_PER_RUN:20}
   providers:
     linkedin:
@@ -127,7 +186,7 @@ management:
       probes:
         enabled: true
   health:
-    livenessstate:
+    livenessState:
       enabled: true
-    readinessstate:
+    readinessState:
       enabled: true

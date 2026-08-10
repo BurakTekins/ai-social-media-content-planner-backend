@@ -47,6 +47,7 @@ public class GenerationBatchServiceImpl implements GenerationBatchService {
         if (links.isEmpty() && documents.isEmpty()) {
             throw new DomainException("At least one link or document is required");
         }
+        int sourceCount = links.size() + documents.size();
         generationBudgetPolicy.validate(new GenerationBudgetPolicy.Request(
                 command.requestedCount(),
                 command.includeImage(),
@@ -67,7 +68,8 @@ public class GenerationBatchServiceImpl implements GenerationBatchService {
                 command.includeImage(), command.includeVideo(),
                 command.textProvider(), command.textModel(),
                 command.imageProvider(), command.imageModel(),
-                command.videoProvider(), command.videoModel()
+                command.videoProvider(), command.videoModel(),
+                command.generationStrategy(), sourceCount
         );
         links.forEach(batch::addLinkSource);
 

@@ -3,6 +3,7 @@ package com.globalcodelabs.socialmediaplanner.interfaces.rest.controller;
 import com.globalcodelabs.socialmediaplanner.application.command.CreateApiCredentialCommand;
 import com.globalcodelabs.socialmediaplanner.application.command.RotateApiCredentialCommand;
 import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialService;
+import com.globalcodelabs.socialmediaplanner.application.service.AiCredentialValidationService;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.CreateApiCredentialRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.RotateApiCredentialRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.UpdateApiCredentialAccountIdentifierRequest;
@@ -31,6 +32,7 @@ import java.util.UUID;
 public class ApiCredentialController {
 
     private final ApiCredentialService apiCredentialService;
+    private final AiCredentialValidationService aiCredentialValidationService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -90,6 +92,11 @@ public class ApiCredentialController {
         return ApiCredentialResponse.from(
                 apiCredentialService.changeActive(credentialId, request.active())
         );
+    }
+
+    @PostMapping("/{credentialId}/validate")
+    public ApiCredentialResponse validate(@PathVariable UUID credentialId) {
+        return ApiCredentialResponse.from(aiCredentialValidationService.validate(credentialId));
     }
 
     @DeleteMapping("/{credentialId}")

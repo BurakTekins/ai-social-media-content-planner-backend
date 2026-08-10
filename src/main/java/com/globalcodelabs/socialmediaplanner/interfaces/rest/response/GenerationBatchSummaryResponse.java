@@ -3,6 +3,7 @@ package com.globalcodelabs.socialmediaplanner.interfaces.rest.response;
 import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatchStatus;
+import com.globalcodelabs.socialmediaplanner.domain.model.GenerationStrategy;
 import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
 
 import java.time.OffsetDateTime;
@@ -26,6 +27,9 @@ public record GenerationBatchSummaryResponse(
         String imageModel,
         String videoProvider,
         String videoModel,
+        GenerationStrategy generationStrategy,
+        String strategySelectionReason,
+        String strategyWarning,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {
@@ -48,6 +52,9 @@ public record GenerationBatchSummaryResponse(
                 batch.imageModel(),
                 batch.videoProvider(),
                 batch.videoModel(),
+                batch.generationStrategy(),
+                batch.strategySelectionReason(),
+                batch.strategyWarning(),
                 batch.createdAt(),
                 batch.updatedAt()
         );

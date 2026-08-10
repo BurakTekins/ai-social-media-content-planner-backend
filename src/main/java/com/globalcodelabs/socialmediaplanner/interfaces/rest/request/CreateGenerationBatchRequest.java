@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.request;
 
 import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.model.GenerationStrategy;
 import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -18,6 +19,7 @@ public record CreateGenerationBatchRequest(
         @NotNull @Valid AiModelSelectionRequest textModel,
         @Valid AiModelSelectionRequest imageModel,
         @Valid AiModelSelectionRequest videoModel,
+        GenerationStrategy generationStrategy,
         List<@NotBlank String> links
 ) {
 }

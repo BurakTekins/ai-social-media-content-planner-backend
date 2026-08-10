@@ -7,6 +7,8 @@ import com.globalcodelabs.socialmediaplanner.domain.event.ContentPublicationFail
 import com.globalcodelabs.socialmediaplanner.domain.event.ContentPublished;
 import com.globalcodelabs.socialmediaplanner.domain.event.ContentScheduled;
 import com.globalcodelabs.socialmediaplanner.common.exception.InvalidContentStateTransitionException;
+import com.twitter.twittertext.TwitterTextParseResults;
+import com.twitter.twittertext.TwitterTextParser;
 import jakarta.persistence.Column;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
@@ -23,6 +25,7 @@ import org.hibernate.annotations.BatchSize;
 import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -30,6 +33,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Entity
@@ -38,6 +42,15 @@ import java.util.stream.Collectors;
 public class Content {
 
     private static final int TWITTER_MAX_CHARACTERS = 280;
+    private static final Pattern PROHIBITED_CLAIM_PATTERN = Pattern.compile(
+            "(?:\\b(?:garanti(?:li|si)?|garanti\\s+(?:eder|ediyor|edilir|sunar|sunuyor|verir)|"
+                    + "kesin\\s+(?:sonuc|basari|fayda|etki|cozum|verimlilik|iyilesme|kazanc)|"
+                    + "bilimsel\\s+olarak\\s+kanitlanmis|yuzde\\s*100|"
+                    + "(?:verimlilik|basari|sonuc|fayda|etki|kazanc)\\s+"
+                    + "(?:kazanin|kazanirsiniz|saglar|sunar)|"
+                    + "guaranteed|guarantees?|scientifically\\s+proven|proven\\s+results?)\\b|"
+                    + "%\\s*100\\b|\\b100\\s*%)"
+    );
 
     @Id
     private UUID id;
@@ -83,6 +96,18 @@ public class Content {
     @Column(name = "published_at")
     private OffsetDateTime publishedAt;
 
+    @Column(name = "publish_operation_id")
+    private UUID publishOperationId;
+
+    @Column(name = "external_post_id")
+    private String externalPostId;
+
+    @Column(name = "publishing_started_at")
+    private OffsetDateTime publishingStartedAt;
+
+    @Column(name = "publication_checked_at")
+    private OffsetDateTime publicationCheckedAt;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -111,6 +136,7 @@ public class Content {
         validatePlatformContentType(this.platform, this.contentType);
         this.text = requireText(text);
         this.hashtags = sanitizeHashtags(hashtags);
+        validateClaims(this.text);
         validatePublicationText(this.platform, this.text, this.hashtags);
         this.batchId = batchId;
         this.generationIndex = generationIndex;
@@ -222,6 +248,7 @@ public class Content {
 
         String updatedText = text == null ? this.text : requireText(text);
         String[] updatedHashtags = hashtags == null ? this.hashtags : sanitizeHashtags(hashtags);
+        validateClaims(updatedText);
         validatePublicationText(platform, updatedText, updatedHashtags);
 
         this.text = updatedText;
@@ -232,6 +259,7 @@ public class Content {
     public void schedule(OffsetDateTime scheduledAt) {
         requireStatus(ContentStatus.DRAFT, ContentStatus.SCHEDULED);
         validateScheduledAt(scheduledAt);
+        validateClaims(text);
         validatePublicationText(platform, text, hashtags);
 
         this.status = ContentStatus.SCHEDULED;
@@ -256,6 +284,10 @@ public class Content {
         this.status = ContentStatus.SCHEDULED;
         this.scheduledAt = scheduledAt;
         this.publishedAt = null;
+        this.publishOperationId = null;
+        this.externalPostId = null;
+        this.publishingStartedAt = null;
+        this.publicationCheckedAt = null;
         this.failureReason = null;
         this.updatedAt = OffsetDateTime.now();
         this.domainEvents.add(new ContentScheduled(id, scheduledAt, updatedAt));
@@ -279,8 +311,49 @@ public class Content {
         requireDraftOperation("Only draft content can be regenerated");
     }
 
+    public void startPublishing(UUID operationId) {
+        requireStatus(ContentStatus.SCHEDULED, ContentStatus.PUBLISHING);
+        this.status = ContentStatus.PUBLISHING;
+        this.publishOperationId = Objects.requireNonNull(operationId, "Publish operation id cannot be null");
+        this.publishingStartedAt = OffsetDateTime.now();
+        this.publicationCheckedAt = null;
+        this.externalPostId = null;
+        this.failureReason = null;
+        this.updatedAt = publishingStartedAt;
+    }
+
+    public void recordExternalPostId(String externalPostId) {
+        requireStatus(ContentStatus.PUBLISHING, ContentStatus.PUBLISHING);
+        this.externalPostId = requireGenerationValue(externalPostId, "External post id cannot be blank");
+        this.publicationCheckedAt = OffsetDateTime.now();
+        this.failureReason = null;
+        this.updatedAt = publicationCheckedAt;
+    }
+
+    public void recordPublicationCheck() {
+        requireStatus(ContentStatus.PUBLISHING, ContentStatus.PUBLISHING);
+        this.publicationCheckedAt = OffsetDateTime.now();
+        this.updatedAt = publicationCheckedAt;
+    }
+
+    public void markPublishingUncertain(String reason) {
+        requireStatus(ContentStatus.PUBLISHING, ContentStatus.PUBLISHING);
+        this.failureReason = requireGenerationValue(reason, "Publishing uncertainty reason cannot be blank");
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void requirePublicationReview(String reason) {
+        requireStatus(ContentStatus.PUBLISHING, ContentStatus.REVIEW_REQUIRED);
+        this.status = ContentStatus.REVIEW_REQUIRED;
+        this.failureReason = requireGenerationValue(reason, "Publication review reason cannot be blank");
+        this.updatedAt = OffsetDateTime.now();
+    }
+
     public void markPublished() {
-        requireStatus(ContentStatus.SCHEDULED, ContentStatus.PUBLISHED);
+        requireStatus(ContentStatus.PUBLISHING, ContentStatus.PUBLISHED);
+        if (externalPostId == null || externalPostId.isBlank()) {
+            throw new DomainException("External post id is required before publication confirmation");
+        }
 
         this.status = ContentStatus.PUBLISHED;
         this.publishedAt = OffsetDateTime.now();
@@ -290,7 +363,9 @@ public class Content {
     }
 
     public void markFailed(String reason) {
-        requireStatus(ContentStatus.SCHEDULED, ContentStatus.FAILED);
+        if (status != ContentStatus.SCHEDULED && status != ContentStatus.PUBLISHING) {
+            throw new InvalidContentStateTransitionException(status, ContentStatus.FAILED);
+        }
         if (reason == null || reason.isBlank()) {
             throw new DomainException("Failure reason cannot be blank");
         }
@@ -359,6 +434,22 @@ public class Content {
         return publishedAt;
     }
 
+    public UUID publishOperationId() {
+        return publishOperationId;
+    }
+
+    public String externalPostId() {
+        return externalPostId;
+    }
+
+    public OffsetDateTime publishingStartedAt() {
+        return publishingStartedAt;
+    }
+
+    public OffsetDateTime publicationCheckedAt() {
+        return publicationCheckedAt;
+    }
+
     public String failureReason() {
         return failureReason;
     }
@@ -419,11 +510,27 @@ public class Content {
             return;
         }
         String formattedText = formatPublicationText(text, hashtags);
-        int characterCount = formattedText.codePointCount(0, formattedText.length());
-        if (characterCount > TWITTER_MAX_CHARACTERS) {
+        TwitterTextParseResults parseResults = TwitterTextParser.parseTweet(formattedText);
+        if (parseResults.weightedLength > TWITTER_MAX_CHARACTERS) {
             throw new DomainException(
-                    "Twitter content including hashtags cannot exceed "
-                            + TWITTER_MAX_CHARACTERS + " characters"
+                    "Twitter content including hashtags has weighted length "
+                            + parseResults.weightedLength + " but cannot exceed "
+                            + TWITTER_MAX_CHARACTERS
+            );
+        }
+        if (!parseResults.isValid) {
+            throw new DomainException("Twitter content contains characters that X does not accept");
+        }
+    }
+
+    private static void validateClaims(String text) {
+        String normalizedText = Normalizer.normalize(text, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .replace('ı', 'i')
+                .toLowerCase(Locale.ROOT);
+        if (PROHIBITED_CLAIM_PATTERN.matcher(normalizedText).find()) {
+            throw new DomainException(
+                    "Content contains a prohibited certainty, guarantee, or unsupported proof claim"
             );
         }
     }

@@ -156,6 +156,7 @@ class GenerationBatchServiceImplTest {
                 null,
                 "gemini",
                 "video-model",
+                null,
                 List.of("https://example.com/source"),
                 List.of()
         );
@@ -189,7 +190,9 @@ class GenerationBatchServiceImplTest {
                 null,
                 null,
                 null,
-                null
+                null,
+                null,
+                1
         );
     }
 }

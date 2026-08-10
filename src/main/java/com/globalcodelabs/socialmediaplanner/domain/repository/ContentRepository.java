@@ -73,4 +73,27 @@ public interface ContentRepository extends JpaRepository<Content, UUID> {
             FOR UPDATE SKIP LOCKED
             """, nativeQuery = true)
     Optional<UUID> lockNextDueContentId(@Param("now") OffsetDateTime now);
+
+    @Query(value = """
+            SELECT content.id
+            FROM content
+            WHERE content.status = 'PUBLISHING'
+              AND content.external_post_id IS NOT NULL
+              AND (content.publication_checked_at IS NULL OR content.publication_checked_at <= :checkBefore)
+            ORDER BY content.publication_checked_at NULLS FIRST, content.publishing_started_at, content.id
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+            """, nativeQuery = true)
+    Optional<UUID> lockNextPendingConfirmationId(@Param("checkBefore") OffsetDateTime checkBefore);
+
+    @Query(value = """
+            SELECT content.id
+            FROM content
+            WHERE content.status = 'PUBLISHING'
+              AND content.publishing_started_at <= :deadline
+            ORDER BY content.publishing_started_at, content.id
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+            """, nativeQuery = true)
+    Optional<UUID> lockNextTimedOutPublicationId(@Param("deadline") OffsetDateTime deadline);
 }

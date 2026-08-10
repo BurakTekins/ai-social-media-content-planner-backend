@@ -21,6 +21,10 @@ public record ContentResponse(
         List<ContentMediaResponse> media,
         UUID batchId,
         OffsetDateTime scheduledAt,
+        UUID publishOperationId,
+        String externalPostId,
+        OffsetDateTime publishingStartedAt,
+        OffsetDateTime publicationCheckedAt,
         OffsetDateTime publishedAt,
         String failureReason,
         OffsetDateTime createdAt,
@@ -35,6 +39,8 @@ public record ContentResponse(
                         .toList(),
                 content.batchId(),
                 content.scheduledAt(),
+                content.publishOperationId(), content.externalPostId(), content.publishingStartedAt(),
+                content.publicationCheckedAt(),
                 content.publishedAt(), content.failureReason(), content.createdAt(), content.updatedAt()
         );
     }

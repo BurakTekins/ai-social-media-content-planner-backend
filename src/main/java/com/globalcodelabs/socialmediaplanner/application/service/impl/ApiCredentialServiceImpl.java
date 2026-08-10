@@ -1,7 +1,9 @@
 package com.globalcodelabs.socialmediaplanner.application.service.impl;
 
 import com.globalcodelabs.socialmediaplanner.application.command.CreateApiCredentialCommand;
+import com.globalcodelabs.socialmediaplanner.application.command.ConnectSocialCredentialCommand;
 import com.globalcodelabs.socialmediaplanner.application.command.RotateApiCredentialCommand;
+import com.globalcodelabs.socialmediaplanner.application.command.RefreshApiCredentialCommand;
 import com.globalcodelabs.socialmediaplanner.application.port.out.security.CredentialCipher;
 import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialResolver;
 import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialService;
@@ -21,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -57,6 +61,41 @@ public class ApiCredentialServiceImpl implements ApiCredentialService, ApiCreden
         } catch (DataIntegrityViolationException exception) {
             throw new ApiCredentialAlreadyExistsException(command.credentialType(), providerName);
         }
+    }
+
+    @Override
+    @Transactional
+    public ApiCredential connectSocialAccount(ConnectSocialCredentialCommand command) {
+        String providerName = normalizeProviderName(command.providerName());
+        Optional<ApiCredential> existingCredential = apiCredentialRepository
+                .findByCredentialTypeAndProviderName(CredentialType.SOCIAL_PLATFORM, providerName);
+        ApiCredential credential = existingCredential
+                .orElseGet(() -> ApiCredential.create(
+                        CredentialType.SOCIAL_PLATFORM,
+                        providerName,
+                        command.accountIdentifier(),
+                        credentialCipher.encrypt(command.accessToken()),
+                        encryptOptional(command.refreshToken()),
+                        command.expiresAt()
+                ));
+
+        if (existingCredential.isPresent()) {
+            credential.updateAccountIdentifier(command.accountIdentifier());
+            credential.rotateTokens(
+                    credentialCipher.encrypt(command.accessToken()),
+                    encryptOptional(command.refreshToken()),
+                    command.expiresAt()
+            );
+        }
+        credential.markValidated(
+                command.accountDisplayName(),
+                command.grantedScopes(),
+                command.refreshTokenExpiresAt()
+        );
+        ApiCredential saved = apiCredentialRepository.save(credential);
+        log.info("Social platform credential connected credentialId={} provider={} accountIdentifier={}",
+                saved.id(), saved.providerName(), saved.accountIdentifier());
+        return saved;
     }
 
     @Override
@@ -99,12 +138,50 @@ public class ApiCredentialServiceImpl implements ApiCredentialService, ApiCreden
 
     @Override
     @Transactional
+    public ApiCredential refreshTokens(UUID credentialId, RefreshApiCredentialCommand command) {
+        ApiCredential credential = find(credentialId);
+        credential.refreshTokens(
+                credentialCipher.encrypt(command.accessToken()),
+                encryptOptional(command.refreshToken()),
+                command.expiresAt(),
+                command.refreshTokenExpiresAt()
+        );
+        ApiCredential saved = apiCredentialRepository.save(credential);
+        log.info("Social platform credential tokens refreshed credentialId={} provider={}",
+                saved.id(), saved.providerName());
+        return saved;
+    }
+
+    @Override
+    @Transactional
     public ApiCredential changeActive(UUID credentialId, boolean active) {
         ApiCredential credential = find(credentialId);
         credential.changeActive(active);
         ApiCredential saved = apiCredentialRepository.save(credential);
         log.info("API credential active state changed credentialId={} active={} provider={}",
                 saved.id(), saved.active(), saved.providerName());
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public ApiCredential markValidationSucceeded(UUID credentialId) {
+        ApiCredential credential = find(credentialId);
+        credential.markValidated(null, Set.of(), null);
+        ApiCredential saved = apiCredentialRepository.save(credential);
+        log.info("API credential validation succeeded credentialId={} credentialType={} provider={}",
+                saved.id(), saved.credentialType(), saved.providerName());
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public ApiCredential markValidationFailed(UUID credentialId, String failureReason) {
+        ApiCredential credential = find(credentialId);
+        credential.markValidationFailed(failureReason);
+        ApiCredential saved = apiCredentialRepository.save(credential);
+        log.warn("API credential validation failed credentialId={} credentialType={} provider={}",
+                saved.id(), saved.credentialType(), saved.providerName());
         return saved;
     }
 
@@ -127,14 +204,38 @@ public class ApiCredentialServiceImpl implements ApiCredentialService, ApiCreden
             String providerName
     ) {
         String normalizedProviderName = normalizeProviderName(providerName);
-        ApiCredential credential = apiCredentialRepository
-                .findByCredentialTypeAndProviderNameAndActiveTrue(
-                        credentialType, normalizedProviderName
-                )
+        ApiCredential credential = findActive(credentialType, normalizedProviderName)
                 .filter(candidate -> !candidate.expiredAt(OffsetDateTime.now()))
                 .orElseThrow(() -> new ApiCredentialUnavailableException(
                         credentialType, normalizedProviderName
                 ));
+        return resolve(credential);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ResolvedApiCredential resolveActiveIncludingExpired(
+            CredentialType credentialType,
+            String providerName
+    ) {
+        String normalizedProviderName = normalizeProviderName(providerName);
+        ApiCredential credential = findActive(credentialType, normalizedProviderName)
+                .orElseThrow(() -> new ApiCredentialUnavailableException(
+                        credentialType, normalizedProviderName
+                ));
+        return resolve(credential);
+    }
+
+    private Optional<ApiCredential> findActive(
+            CredentialType credentialType,
+            String normalizedProviderName
+    ) {
+        return apiCredentialRepository.findByCredentialTypeAndProviderNameAndActiveTrue(
+                credentialType, normalizedProviderName
+        );
+    }
+
+    private ResolvedApiCredential resolve(ApiCredential credential) {
         return new ResolvedApiCredential(
                 credential.id(),
                 credential.credentialType(),
@@ -142,7 +243,8 @@ public class ApiCredentialServiceImpl implements ApiCredentialService, ApiCreden
                 credential.accountIdentifier(),
                 credentialCipher.decrypt(credential.encryptedAccessToken()),
                 decryptOptional(credential.encryptedRefreshToken()),
-                credential.expiresAt()
+                credential.expiresAt(),
+                credential.refreshTokenExpiresAt()
         );
     }
 

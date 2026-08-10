@@ -78,6 +78,16 @@ public class GenerationBatch {
     @Column(name = "video_model")
     private String videoModel;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "generation_strategy", nullable = false, length = 20)
+    private GenerationStrategy generationStrategy;
+
+    @Column(name = "strategy_selection_reason", nullable = false, columnDefinition = "TEXT")
+    private String strategySelectionReason;
+
+    @Column(name = "strategy_warning", columnDefinition = "TEXT")
+    private String strategyWarning;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -98,14 +108,21 @@ public class GenerationBatch {
             String imageProvider,
             String imageModel,
             String videoProvider,
-            String videoModel
+            String videoModel,
+            GenerationStrategy requestedStrategy,
+            int sourceCount
     ) {
         validatePlatformContentType(platform, contentType);
         if (requestedCount <= 0) {
             throw new DomainException("Requested count must be greater than zero");
         }
+        if (sourceCount <= 0) {
+            throw new DomainException("At least one source is required");
+        }
         validateOptionalModel(includeImage, imageProvider, imageModel, "image");
         validateOptionalModel(includeVideo, videoProvider, videoModel, "video");
+
+        StrategySelection strategySelection = selectStrategy(requestedStrategy, sourceCount, requestedCount);
 
         this.id = UUID.randomUUID();
         this.platform = platform;
@@ -122,6 +139,9 @@ public class GenerationBatch {
         this.imageModel = normalizedOptionalValue(imageModel);
         this.videoProvider = normalizedOptionalProvider(videoProvider);
         this.videoModel = normalizedOptionalValue(videoModel);
+        this.generationStrategy = strategySelection.strategy();
+        this.strategySelectionReason = strategySelection.reason();
+        this.strategyWarning = strategySelection.warning();
         this.createdAt = OffsetDateTime.now();
         this.updatedAt = createdAt;
     }
@@ -137,11 +157,14 @@ public class GenerationBatch {
             String imageProvider,
             String imageModel,
             String videoProvider,
-            String videoModel
+            String videoModel,
+            GenerationStrategy requestedStrategy,
+            int sourceCount
     ) {
         return new GenerationBatch(
                 platform, contentType, requestedCount, includeImage, includeVideo,
-                textProvider, textModel, imageProvider, imageModel, videoProvider, videoModel
+                textProvider, textModel, imageProvider, imageModel, videoProvider, videoModel,
+                requestedStrategy, sourceCount
         );
     }
 
@@ -271,6 +294,18 @@ public class GenerationBatch {
         return videoModel;
     }
 
+    public GenerationStrategy generationStrategy() {
+        return generationStrategy;
+    }
+
+    public String strategySelectionReason() {
+        return strategySelectionReason;
+    }
+
+    public String strategyWarning() {
+        return strategyWarning;
+    }
+
     public List<ContentSource> sources() {
         return List.copyOf(sources);
     }
@@ -325,5 +360,45 @@ public class GenerationBatch {
 
     private static String normalizedOptionalProvider(String value) {
         return value == null || value.isBlank() ? null : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static StrategySelection selectStrategy(
+            GenerationStrategy requestedStrategy,
+            int sourceCount,
+            int requestedCount
+    ) {
+        if (requestedStrategy == null) {
+            if (sourceCount == requestedCount) {
+                return new StrategySelection(
+                        GenerationStrategy.SOURCE_BASED,
+                        "Defaulted to SOURCE_BASED because source count (%d) equals requested content count (%d)."
+                                .formatted(sourceCount, requestedCount),
+                        null
+                );
+            }
+            return new StrategySelection(
+                    GenerationStrategy.COMBINED,
+                    "Defaulted to COMBINED because source count (%d) differs from requested content count (%d)."
+                            .formatted(sourceCount, requestedCount),
+                    null
+            );
+        }
+
+        String warning = requestedStrategy == GenerationStrategy.SOURCE_BASED && sourceCount < requestedCount
+                ? ("SOURCE_BASED was explicitly selected with fewer sources (%d) than requested contents (%d); "
+                + "sources will be reused round-robin.").formatted(sourceCount, requestedCount)
+                : null;
+        return new StrategySelection(
+                requestedStrategy,
+                "User selected %s strategy.".formatted(requestedStrategy),
+                warning
+        );
+    }
+
+    private record StrategySelection(
+            GenerationStrategy strategy,
+            String reason,
+            String warning
+    ) {
     }
 }

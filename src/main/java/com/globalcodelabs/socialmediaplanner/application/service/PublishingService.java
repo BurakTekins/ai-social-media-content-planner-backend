@@ -9,5 +9,9 @@ public interface PublishingService {
 
     boolean publishNextDueContent();
 
+    boolean confirmNextPublishingContent();
+
+    boolean reviewNextTimedOutPublishingContent();
+
     List<PublishAttempt> findAttempts(UUID contentId);
 }

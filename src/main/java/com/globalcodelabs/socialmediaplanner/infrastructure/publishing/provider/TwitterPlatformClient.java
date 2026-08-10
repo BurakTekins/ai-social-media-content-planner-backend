@@ -22,6 +22,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
 import java.util.Arrays;
@@ -82,6 +83,27 @@ public class TwitterPlatformClient implements SocialPlatformClient {
             throw exception;
         } finally {
             MdcUtil.removeProvider();
+        }
+    }
+
+    @Override
+    public boolean isPublished(String externalPostId, PlatformCredential credential) {
+        String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
+        try {
+            TweetResponse response = restClientFactory.forBaseUrl(baseUrl)
+                    .get()
+                    .uri(restClientFactory.endpoint(baseUrl, "2/tweets/" + externalPostId))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                    .retrieve()
+                    .body(TweetResponse.class);
+            return response != null
+                    && response.data() != null
+                    && externalPostId.equals(response.data().id());
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == 404) {
+                return false;
+            }
+            throw exception;
         }
     }
 

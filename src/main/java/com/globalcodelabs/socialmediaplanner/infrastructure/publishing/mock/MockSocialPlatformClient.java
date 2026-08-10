@@ -2,6 +2,7 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.publishing.mock;
 
 import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentRequest;
 import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentResult;
+import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PlatformCredential;
 import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.SocialPlatformClient;
 import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
 import org.springframework.stereotype.Component;
@@ -23,5 +24,10 @@ public class MockSocialPlatformClient implements SocialPlatformClient {
                 request.contentId()
         );
         return new PublishContentResult(externalPostId);
+    }
+
+    @Override
+    public boolean isPublished(String externalPostId, PlatformCredential credential) {
+        return externalPostId != null && externalPostId.startsWith("mock-");
     }
 }

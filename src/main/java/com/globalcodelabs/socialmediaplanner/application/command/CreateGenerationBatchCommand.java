@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.application.command;
 
 import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.model.GenerationStrategy;
 import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
 
 import java.util.List;
@@ -17,6 +18,7 @@ public record CreateGenerationBatchCommand(
         String imageModel,
         String videoProvider,
         String videoModel,
+        GenerationStrategy generationStrategy,
         List<String> links,
         List<UploadedDocument> documents
 ) {

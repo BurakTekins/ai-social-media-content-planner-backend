@@ -12,10 +12,17 @@ public interface ApiCredentialRepository extends JpaRepository<ApiCredential, UU
 
     boolean existsByCredentialTypeAndProviderName(CredentialType credentialType, String providerName);
 
+    Optional<ApiCredential> findByCredentialTypeAndProviderName(
+            CredentialType credentialType,
+            String providerName
+    );
+
     Optional<ApiCredential> findByCredentialTypeAndProviderNameAndActiveTrue(
             CredentialType credentialType,
             String providerName
     );
 
     List<ApiCredential> findAllByOrderByCredentialTypeAscProviderNameAsc();
+
+    List<ApiCredential> findAllByCredentialTypeAndActiveTrue(CredentialType credentialType);
 }

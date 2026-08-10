@@ -22,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriUtils;
 
 import java.net.URI;
@@ -84,6 +85,30 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
             throw exception;
         } finally {
             MdcUtil.removeProvider();
+        }
+    }
+
+    @Override
+    public boolean isPublished(String externalPostId, PlatformCredential credential) {
+        String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
+        String version = requireApiVersion(properties.requireVersion(PROVIDER_NAME));
+        try {
+            PostLookupResponse response = restClientFactory.forBaseUrl(baseUrl)
+                    .get()
+                    .uri(restClientFactory.endpoint(
+                            baseUrl, LinkedInApiPaths.POSTS + "/" + encodedUrn(externalPostId)
+                    ))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                    .header("Linkedin-Version", version)
+                    .header("X-Restli-Protocol-Version", RESTLI_PROTOCOL_VERSION)
+                    .retrieve()
+                    .body(PostLookupResponse.class);
+            return response != null && "PUBLISHED".equals(response.lifecycleState());
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == 404) {
+                return false;
+            }
+            throw exception;
         }
     }
 
@@ -487,6 +512,9 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
     }
 
     private record PostContent(PostMedia media) {
+    }
+
+    private record PostLookupResponse(String lifecycleState) {
     }
 
     private record PostMedia(String id) {

@@ -12,6 +12,7 @@ public record ResolvedApiCredential(
         String accountIdentifier,
         String accessToken,
         String refreshToken,
-        OffsetDateTime expiresAt
+        OffsetDateTime expiresAt,
+        OffsetDateTime refreshTokenExpiresAt
 ) {
 }

@@ -73,10 +73,12 @@ class ContentTest {
     }
 
     @Test
-    void marksScheduledContentAsPublished() {
+    void marksPlatformConfirmedContentAsPublished() {
         Content content = scheduledContent();
         OffsetDateTime beforePublication = OffsetDateTime.now();
 
+        content.startPublishing(UUID.randomUUID());
+        content.recordExternalPostId("external-post-1");
         content.markPublished();
 
         assertThat(content.status()).isEqualTo(ContentStatus.PUBLISHED);
@@ -109,6 +111,8 @@ class ContentTest {
                 .isInstanceOf(InvalidContentStateTransitionException.class);
 
         Content published = scheduledContent();
+        published.startPublishing(UUID.randomUUID());
+        published.recordExternalPostId("external-post-2");
         published.markPublished();
 
         assertThatThrownBy(() -> published.schedule(OffsetDateTime.now().plusHours(2)))

@@ -181,10 +181,10 @@ public class ContentServiceImpl implements ContentService {
             case DRAFT -> content.schedule(scheduledAt);
             case SCHEDULED -> content.reschedule(scheduledAt);
             case FAILED -> content.retryPublishing(scheduledAt);
-            case PUBLISHED -> throw new InvalidContentStateTransitionException(
-                    ContentStatus.PUBLISHED,
-                    ContentStatus.SCHEDULED
-            );
+            case PUBLISHING, REVIEW_REQUIRED, PUBLISHED ->
+                    throw new InvalidContentStateTransitionException(
+                            content.status(), ContentStatus.SCHEDULED
+                    );
         }
         initializeMedia(content);
         log.info("Content scheduled contentId={} scheduledAt={}", contentId, scheduledAt);

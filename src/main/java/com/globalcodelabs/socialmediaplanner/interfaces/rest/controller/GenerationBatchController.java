@@ -122,6 +122,7 @@ public class GenerationBatchController {
                 request.textModel().provider(), request.textModel().model(),
                 provider(request.imageModel()), model(request.imageModel()),
                 provider(request.videoModel()), model(request.videoModel()),
+                request.generationStrategy(),
                 request.links(), documents
         );
     }

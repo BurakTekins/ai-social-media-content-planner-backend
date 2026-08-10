@@ -175,6 +175,9 @@ public class DraftRegenerationServiceImpl implements DraftRegenerationService {
                 Regenerate the following draft as a distinct alternative while preserving its subject.
                 Return only valid JSON with exactly these fields: text (string) and hashtags (array of strings).
                 Do not wrap the JSON in Markdown or add explanations.
+                Preserve every condition attached to an offer, discount, benefit, eligibility rule, prerequisite,
+                limitation, or duration in the current draft. Never present a conditional claim as unconditional;
+                if its complete conditions cannot be preserved, omit the whole claim.
                 Platform: %s
                 Content type: %s
                 Platform requirements:
