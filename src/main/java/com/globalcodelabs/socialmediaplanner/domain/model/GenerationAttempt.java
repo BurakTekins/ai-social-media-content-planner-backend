@@ -16,6 +16,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
@@ -118,7 +119,7 @@ public class GenerationAttempt {
         this.promptHash = requireHash(promptHash);
         this.status = GenerationAttemptStatus.STARTED;
         this.downloadRetryCount = 0;
-        this.createdAt = OffsetDateTime.now();
+        this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.updatedAt = createdAt;
     }
 
@@ -172,7 +173,7 @@ public class GenerationAttempt {
         }
         this.status = GenerationAttemptStatus.SUCCEEDED;
         this.errorMessage = null;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void markSubmitted(
@@ -189,9 +190,9 @@ public class GenerationAttempt {
         this.providerSubmittedAt = Objects.requireNonNull(
                 submittedAt,
                 "Provider submission time cannot be null"
-        );
+        ).withOffsetSameInstant(ZoneOffset.UTC);
         this.status = GenerationAttemptStatus.SUBMITTED;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void markProcessing() {
@@ -202,7 +203,7 @@ public class GenerationAttempt {
         );
         this.status = GenerationAttemptStatus.PROCESSING;
         this.nextDownloadRetryAt = null;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void markProviderSucceeded(
@@ -222,10 +223,10 @@ public class GenerationAttempt {
         this.artifactExpiresAt = Objects.requireNonNull(
                 expiresAt,
                 "Video artifact expiry cannot be null"
-        );
+        ).withOffsetSameInstant(ZoneOffset.UTC);
         this.status = GenerationAttemptStatus.PROVIDER_SUCCEEDED;
         this.errorMessage = null;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void markDownloadFailed(String errorMessage, OffsetDateTime nextRetryAt) {
@@ -241,9 +242,9 @@ public class GenerationAttempt {
         this.nextDownloadRetryAt = Objects.requireNonNull(
                 nextRetryAt,
                 "Next video download retry time cannot be null"
-        );
+        ).withOffsetSameInstant(ZoneOffset.UTC);
         this.downloadRetryCount++;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void markDownloaded(String storageKey, String mediaContentType) {
@@ -259,14 +260,14 @@ public class GenerationAttempt {
         this.status = GenerationAttemptStatus.DOWNLOADED;
         this.errorMessage = null;
         this.nextDownloadRetryAt = null;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void completeDownloadedVideo(String output) {
         requireStatus(GenerationAttemptStatus.DOWNLOADED);
         this.output = DomainValidation.requireText(output, "AI generation output cannot be blank");
         this.status = GenerationAttemptStatus.SUCCEEDED;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void awaitRegenerationConsent(String errorMessage) {
@@ -281,13 +282,13 @@ public class GenerationAttempt {
                 "Regeneration consent reason cannot be blank"
         );
         this.nextDownloadRetryAt = null;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void approveRegeneration() {
         requireStatus(GenerationAttemptStatus.AWAITING_REGENERATION_CONSENT);
         this.status = GenerationAttemptStatus.REGENERATION_APPROVED;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void fail(String errorMessage, boolean submissionUnknown) {
@@ -323,7 +324,7 @@ public class GenerationAttempt {
         if (normalizedProviderRequestId != null) {
             this.providerRequestId = normalizedProviderRequestId;
         }
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void invalidate(String errorMessage) {
@@ -333,7 +334,7 @@ public class GenerationAttempt {
                 errorMessage,
                 "Generation attempt error cannot be blank"
         );
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void recordStoredMedia(String storageKey, String mediaContentType) {
@@ -347,7 +348,7 @@ public class GenerationAttempt {
         if (output != null && output.startsWith("data:")) {
             this.output = null;
         }
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     private void requireStatus(GenerationAttemptStatus expected) {

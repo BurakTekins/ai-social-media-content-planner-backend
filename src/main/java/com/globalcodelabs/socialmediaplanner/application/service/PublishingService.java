@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -66,7 +67,7 @@ public class PublishingService {
 
     public boolean reviewNextTimedOutPublishingContent() {
         GeneralSettings settings = generalSettingsService.get();
-        OffsetDateTime deadline = OffsetDateTime.now()
+        OffsetDateTime deadline = OffsetDateTime.now(ZoneOffset.UTC)
                 .minus(settings.publicationConfirmationTimeout());
         return Boolean.TRUE.equals(transactionTemplate.execute(transactionStatus -> contentRepository
                 .lockNextTimedOutPublicationId(deadline)
@@ -98,7 +99,7 @@ public class PublishingService {
 
     private ClaimedPublication claimNextDueContent() {
         return transactionTemplate.execute(transactionStatus -> contentRepository
-                .lockNextDueContentId(OffsetDateTime.now())
+                .lockNextDueContentId(OffsetDateTime.now(ZoneOffset.UTC))
                 .map(contentId -> {
                     Content content = contentRepository.findWithMediaById(contentId)
                             .orElseThrow(() -> new ContentNotFoundException(contentId));
@@ -112,7 +113,7 @@ public class PublishingService {
 
     private PendingConfirmation claimNextConfirmation() {
         GeneralSettings settings = generalSettingsService.get();
-        OffsetDateTime checkBefore = OffsetDateTime.now()
+        OffsetDateTime checkBefore = OffsetDateTime.now(ZoneOffset.UTC)
                 .minus(settings.publicationConfirmationInterval());
         return transactionTemplate.execute(transactionStatus -> contentRepository
                 .lockNextPendingConfirmationId(checkBefore)

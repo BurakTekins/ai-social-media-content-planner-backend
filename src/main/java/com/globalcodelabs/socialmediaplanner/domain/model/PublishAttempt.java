@@ -14,6 +14,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -52,7 +53,7 @@ public class PublishAttempt {
     ) {
         this.id = UUID.randomUUID();
         this.content = Objects.requireNonNull(content, "Content cannot be null");
-        this.attemptedAt = OffsetDateTime.now();
+        this.attemptedAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.success = success;
         this.errorMessage = errorMessage;
         this.externalPostId = externalPostId;

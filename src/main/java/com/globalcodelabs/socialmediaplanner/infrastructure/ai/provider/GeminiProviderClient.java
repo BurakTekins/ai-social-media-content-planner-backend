@@ -6,7 +6,7 @@ import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationResul
 import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialService;
 import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponseException;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiRestClientFactory;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderProperties;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.AiGeneratedVideoDownloader;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.RecoverableVideoProviderClient;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoArtifactExpiredException;
@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -200,7 +201,7 @@ public class GeminiProviderClient extends AbstractAiProviderClient implements Re
         return new VideoTaskSubmission(
                 operationName,
                 start.providerRequestId(),
-                OffsetDateTime.now()
+                OffsetDateTime.now(ZoneOffset.UTC)
         );
     }
 
@@ -234,7 +235,7 @@ public class GeminiProviderClient extends AbstractAiProviderClient implements Re
                 submission.taskId(),
                 providerRequestId,
                 videoUri,
-                OffsetDateTime.now().plus(VIDEO_RETENTION)
+                OffsetDateTime.now(ZoneOffset.UTC).plus(VIDEO_RETENTION)
         );
     }
 

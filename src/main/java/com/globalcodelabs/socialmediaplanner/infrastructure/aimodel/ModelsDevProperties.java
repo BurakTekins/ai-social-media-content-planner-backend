@@ -44,6 +44,6 @@ public class ModelsDevProperties {
         private String cron = "0 0 3 * * *";
 
         @NotBlank
-        private String zone = "Europe/Istanbul";
+        private String zone = "UTC";
     }
 }

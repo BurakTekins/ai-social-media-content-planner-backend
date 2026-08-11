@@ -27,6 +27,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -144,7 +145,7 @@ public class GenerationBatchService {
                 .existsByBatchIdAndStatusAndNextDownloadRetryAtLessThanEqual(
                         batchId,
                         GenerationAttemptStatus.DOWNLOAD_FAILED,
-                        OffsetDateTime.now()
+                        OffsetDateTime.now(ZoneOffset.UTC)
                 )) {
             return Optional.empty();
         }
@@ -188,7 +189,7 @@ public class GenerationBatchService {
     }
 
     private GenerationBatch claimRetry(UUID batchId) {
-        OffsetDateTime retriedAt = OffsetDateTime.now();
+        OffsetDateTime retriedAt = OffsetDateTime.now(ZoneOffset.UTC);
         int claimed = generationBatchRepository.claimFailedForRetry(
                 batchId,
                 GenerationBatchStatus.FAILED,

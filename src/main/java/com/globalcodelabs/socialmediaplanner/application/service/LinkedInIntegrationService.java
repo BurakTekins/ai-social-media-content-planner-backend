@@ -12,6 +12,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Set;
 
 @Service
@@ -50,7 +51,7 @@ public class LinkedInIntegrationService {
         } catch (RestClientException exception) {
             throw SocialIntegrationSupport.accountLookupException("LinkedIn", exception);
         }
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         ApiCredential credential = credentialService.connectSocialAccount(new ConnectSocialCredentialCommand(
                 PROVIDER,
                 "urn:li:person:" + user.sub(),

@@ -7,7 +7,7 @@
     <springProfile name="local">
         <appender name="LOCAL_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
-                <pattern>%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%-5level) %clr([%15.15thread]){faint} %clr(%-40.40logger{39}){cyan} : %msg%replace( | %mdc){' \| $',''}%n%wEx</pattern>
+                <pattern>%clr(%d{yyyy-MM-dd HH:mm:ss.SSS, UTC}){faint} %clr(%-5level) %clr([%15.15thread]){faint} %clr(%-40.40logger{39}){cyan} : %msg%replace( | %mdc){' \| $',''}%n%wEx</pattern>
             </encoder>
         </appender>
 
@@ -27,6 +27,7 @@
         <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSXXX</timestampPattern>
+                <timeZone>UTC</timeZone>
                 <customFields>{"service":"${serviceName}"}</customFields>
                 <includeContext>false</includeContext>
                 <includeMdcKeyName>correlationId</includeMdcKeyName>

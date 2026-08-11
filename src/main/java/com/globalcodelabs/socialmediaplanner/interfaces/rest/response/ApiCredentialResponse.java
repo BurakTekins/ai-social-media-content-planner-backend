@@ -5,6 +5,7 @@ import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
 import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialValidationStatus;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Set;
 import java.util.UUID;
 
@@ -45,7 +46,7 @@ public record ApiCredentialResponse(
                 credential.lastValidatedAt(),
                 validationError == null ? null : validationError.code(),
                 validationError == null ? null : validationError.message(),
-                credential.expiredAt(OffsetDateTime.now()),
+                credential.expiredAt(OffsetDateTime.now(ZoneOffset.UTC)),
                 credential.active(),
                 credential.createdAt(),
                 credential.updatedAt()

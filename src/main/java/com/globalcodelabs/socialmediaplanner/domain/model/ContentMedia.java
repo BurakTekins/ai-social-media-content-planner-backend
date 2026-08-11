@@ -18,6 +18,7 @@ import lombok.experimental.Accessors;
 
 import java.net.URI;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -71,7 +72,7 @@ public class ContentMedia {
         this.publicUrl = publicUrl;
         this.modelProvider = modelProvider;
         this.modelId = modelId;
-        this.createdAt = OffsetDateTime.now();
+        this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     static ContentMedia create(
@@ -96,7 +97,7 @@ public class ContentMedia {
         this.publicUrl = publicUrl;
         this.modelProvider = modelProvider;
         this.modelId = modelId;
-        this.createdAt = OffsetDateTime.now();
+        this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     private static String requireStorageKey(String storageKey) {

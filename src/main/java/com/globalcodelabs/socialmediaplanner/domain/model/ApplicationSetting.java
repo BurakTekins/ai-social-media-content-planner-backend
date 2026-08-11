@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "application_setting")
@@ -32,7 +33,7 @@ public class ApplicationSetting {
     private ApplicationSetting(String key, String value) {
         this.key = requireValue(key, "Setting key cannot be blank");
         this.value = requireValue(value, "Setting value cannot be blank");
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public static ApplicationSetting create(String key, String value) {
@@ -41,7 +42,7 @@ public class ApplicationSetting {
 
     public void update(String value) {
         this.value = requireValue(value, "Setting value cannot be blank");
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     private static String requireValue(String value, String message) {

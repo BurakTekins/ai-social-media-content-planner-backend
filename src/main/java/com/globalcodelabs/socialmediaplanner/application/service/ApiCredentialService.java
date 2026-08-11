@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -190,7 +191,7 @@ public class ApiCredentialService {
     ) {
         String normalizedProviderName = normalizeProviderName(providerName);
         ApiCredential credential = findActive(credentialType, normalizedProviderName)
-                .filter(candidate -> !candidate.expiredAt(OffsetDateTime.now()))
+                .filter(candidate -> !candidate.expiredAt(OffsetDateTime.now(ZoneOffset.UTC)))
                 .orElseThrow(() -> new ApiCredentialUnavailableException(
                         credentialType, normalizedProviderName
                 ));

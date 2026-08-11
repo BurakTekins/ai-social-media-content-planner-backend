@@ -19,11 +19,16 @@ spring:
       validation-timeout: ${DB_VALIDATION_TIMEOUT:5000}
       leak-detection-threshold: ${DB_LEAK_DETECTION:60000}
       pool-name: ${DB_POOL_NAME:SocialMediaPlannerPool}
+      connection-init-sql: SET TIME ZONE 'UTC'
+  jackson:
+    time-zone: UTC
   jpa:
     show-sql: ${JPA_SHOW_SQL:false}
     properties:
       hibernate:
         format_sql: ${HIBERNATE_FORMAT_SQL:true}
+        jdbc:
+          time_zone: UTC
   flyway:
     enabled: ${FLYWAY_ENABLED:true}
     baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:false}
@@ -126,7 +131,7 @@ models-dev:
   retry-delay: ${MODELS_DEV_RETRY_DELAY:500ms}
   sync:
     cron: "${MODELS_DEV_SYNC_CRON:0 0 3 * * *}"
-    zone: ${MODELS_DEV_SYNC_ZONE:Europe/Istanbul}
+    zone: ${MODELS_DEV_SYNC_ZONE:UTC}
 
 generation:
   budget:

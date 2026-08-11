@@ -23,6 +23,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -88,7 +89,12 @@ public class ContentService {
         if (from == null || to == null || !from.isBefore(to)) {
             throw new DomainException("Calendar start time must be before end time");
         }
-        return contentRepository.findCalendarEntries(from, to, status, platform);
+        return contentRepository.findCalendarEntries(
+                from.withOffsetSameInstant(ZoneOffset.UTC),
+                to.withOffsetSameInstant(ZoneOffset.UTC),
+                status,
+                platform
+        );
     }
 
     @Transactional

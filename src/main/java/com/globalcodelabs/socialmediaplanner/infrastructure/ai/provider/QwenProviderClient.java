@@ -7,7 +7,7 @@ import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationResul
 import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialService;
 import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponseException;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiRestClientFactory;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderProperties;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.AiGeneratedVideoDownloader;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.RecoverableVideoProviderClient;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoArtifactExpiredException;
@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 import java.net.URI;
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -251,7 +252,7 @@ public class QwenProviderClient extends AbstractAiProviderClient implements Reco
                 null,
                 requestId
         );
-        return new VideoTaskSubmission(taskId, requestId, OffsetDateTime.now());
+        return new VideoTaskSubmission(taskId, requestId, OffsetDateTime.now(ZoneOffset.UTC));
     }
 
     @Override

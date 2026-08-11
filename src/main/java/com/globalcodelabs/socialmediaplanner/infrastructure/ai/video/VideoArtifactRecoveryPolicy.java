@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Component
 public class VideoArtifactRecoveryPolicy {
@@ -25,7 +26,7 @@ public class VideoArtifactRecoveryPolicy {
         long initialMillis = properties.getInitialBackoff().toMillis();
         long maximumMillis = properties.getMaximumBackoff().toMillis();
         long delayMillis = (long) Math.min(maximumMillis, initialMillis * factor);
-        return OffsetDateTime.now().plus(Duration.ofMillis(delayMillis));
+        return OffsetDateTime.now(ZoneOffset.UTC).plus(Duration.ofMillis(delayMillis));
     }
 
     public int batchSize() {

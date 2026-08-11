@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.common.exception;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 public record ErrorResponse(
         OffsetDateTime timestamp,
@@ -17,7 +18,7 @@ public record ErrorResponse(
             String correlationId
     ) {
         return new ErrorResponse(
-                OffsetDateTime.now(),
+                OffsetDateTime.now(ZoneOffset.UTC),
                 errorCode.httpStatus().value(),
                 errorCode.code(),
                 message == null || message.isBlank() ? errorCode.defaultMessage() : message,

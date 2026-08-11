@@ -19,6 +19,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -63,7 +64,7 @@ public class ContentSource {
         this.sourceType = Objects.requireNonNull(sourceType, "Source type cannot be null");
         this.sourceValue = DomainValidation.requireText(sourceValue, "Source value cannot be blank");
         this.status = ContentSourceStatus.PENDING;
-        this.createdAt = OffsetDateTime.now();
+        this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     static ContentSource create(GenerationBatch batch, ContentSourceType sourceType, String sourceValue) {

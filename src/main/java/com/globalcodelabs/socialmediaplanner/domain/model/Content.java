@@ -26,6 +26,7 @@ import org.hibernate.annotations.BatchSize;
 import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -133,8 +134,9 @@ public class Content {
         this.batchId = batchId;
         this.generationIndex = generationIndex;
         this.status = ContentStatus.DRAFT;
-        this.createdAt = createdAt;
-        this.updatedAt = createdAt;
+        this.createdAt = Objects.requireNonNull(createdAt, "Created time cannot be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
+        this.updatedAt = this.createdAt;
     }
 
     public static Content create(
@@ -148,7 +150,7 @@ public class Content {
         return new Content(
                 UUID.randomUUID(), title, platform, contentType, text, hashtags, batchId,
                 null,
-                OffsetDateTime.now()
+                OffsetDateTime.now(ZoneOffset.UTC)
         );
     }
 
@@ -167,7 +169,7 @@ public class Content {
         }
         return new Content(
                 UUID.randomUUID(), title, platform, contentType, text, hashtags, batchId,
-                generationIndex, OffsetDateTime.now()
+                generationIndex, OffsetDateTime.now(ZoneOffset.UTC)
         );
     }
 
@@ -184,7 +186,7 @@ public class Content {
             throw new DomainException("Content already has " + mediaType + " media");
         }
         media.add(ContentMedia.create(this, mediaType, storageKey, publicUrl, modelProvider, modelId));
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public String replaceMedia(
@@ -205,7 +207,7 @@ public class Content {
             replacedStorageKey = existing.storageKey();
             existing.replaceWith(storageKey, publicUrl, modelProvider, modelId);
         }
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         return replacedStorageKey;
     }
 
@@ -214,7 +216,7 @@ public class Content {
         ContentMedia existing = findMedia(mediaType)
                 .orElseThrow(() -> new DomainException("Content does not have " + mediaType + " media"));
         media.remove(existing);
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         return existing.storageKey();
     }
 
@@ -231,7 +233,7 @@ public class Content {
         this.textProvider = DomainValidation.requireText(provider, "Text provider cannot be blank")
                 .toLowerCase(Locale.ROOT);
         this.textModel = DomainValidation.requireText(model, "Text model cannot be blank");
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void updateDraft(String title, String text, List<String> hashtags) {
@@ -252,7 +254,7 @@ public class Content {
         this.title = updatedTitle;
         this.text = updatedText;
         this.hashtags = updatedHashtags;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void schedule(OffsetDateTime scheduledAt) {
@@ -261,16 +263,16 @@ public class Content {
         ContentPolicy.validateContent(platform, text, hashtags);
 
         this.status = ContentStatus.SCHEDULED;
-        this.scheduledAt = scheduledAt;
-        this.updatedAt = OffsetDateTime.now();
+        this.scheduledAt = scheduledAt.withOffsetSameInstant(ZoneOffset.UTC);
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void reschedule(OffsetDateTime scheduledAt) {
         requireStatus(ContentStatus.SCHEDULED, ContentStatus.SCHEDULED);
         ContentPolicy.validateScheduledAt(scheduledAt);
 
-        this.scheduledAt = scheduledAt;
-        this.updatedAt = OffsetDateTime.now();
+        this.scheduledAt = scheduledAt.withOffsetSameInstant(ZoneOffset.UTC);
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void retryPublishing(OffsetDateTime scheduledAt) {
@@ -278,14 +280,14 @@ public class Content {
         ContentPolicy.validateScheduledAt(scheduledAt);
 
         this.status = ContentStatus.SCHEDULED;
-        this.scheduledAt = scheduledAt;
+        this.scheduledAt = scheduledAt.withOffsetSameInstant(ZoneOffset.UTC);
         this.publishedAt = null;
         this.publishOperationId = null;
         this.externalPostId = null;
         this.publishingStartedAt = null;
         this.publicationCheckedAt = null;
         this.failureReason = null;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void cancelSchedule() {
@@ -295,7 +297,7 @@ public class Content {
         this.scheduledAt = null;
         this.publishedAt = null;
         this.failureReason = null;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void ensureDeletable() {
@@ -310,7 +312,7 @@ public class Content {
         requireStatus(ContentStatus.SCHEDULED, ContentStatus.PUBLISHING);
         this.status = ContentStatus.PUBLISHING;
         this.publishOperationId = Objects.requireNonNull(operationId, "Publish operation id cannot be null");
-        this.publishingStartedAt = OffsetDateTime.now();
+        this.publishingStartedAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.publicationCheckedAt = null;
         this.externalPostId = null;
         this.failureReason = null;
@@ -320,14 +322,14 @@ public class Content {
     public void recordExternalPostId(String externalPostId) {
         requireStatus(ContentStatus.PUBLISHING, ContentStatus.PUBLISHING);
         this.externalPostId = DomainValidation.requireText(externalPostId, "External post id cannot be blank");
-        this.publicationCheckedAt = OffsetDateTime.now();
+        this.publicationCheckedAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.failureReason = null;
         this.updatedAt = publicationCheckedAt;
     }
 
     public void recordPublicationCheck() {
         requireStatus(ContentStatus.PUBLISHING, ContentStatus.PUBLISHING);
-        this.publicationCheckedAt = OffsetDateTime.now();
+        this.publicationCheckedAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.updatedAt = publicationCheckedAt;
     }
 
@@ -337,14 +339,14 @@ public class Content {
                 reason,
                 "Publishing uncertainty reason cannot be blank"
         );
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void requirePublicationReview(String reason) {
         requireStatus(ContentStatus.PUBLISHING, ContentStatus.REVIEW_REQUIRED);
         this.status = ContentStatus.REVIEW_REQUIRED;
         this.failureReason = DomainValidation.requireText(reason, "Publication review reason cannot be blank");
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void markPublished() {
@@ -354,7 +356,7 @@ public class Content {
         }
 
         this.status = ContentStatus.PUBLISHED;
-        this.publishedAt = OffsetDateTime.now();
+        this.publishedAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.failureReason = null;
         this.updatedAt = publishedAt;
     }
@@ -362,7 +364,7 @@ public class Content {
     public void markPublishedAfterReview() {
         requireStatus(ContentStatus.REVIEW_REQUIRED, ContentStatus.PUBLISHED);
         this.status = ContentStatus.PUBLISHED;
-        this.publicationCheckedAt = OffsetDateTime.now();
+        this.publicationCheckedAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.publishedAt = publicationCheckedAt;
         this.failureReason = null;
         this.updatedAt = publishedAt;
@@ -371,7 +373,7 @@ public class Content {
     public void markFailedAfterReview() {
         requireStatus(ContentStatus.REVIEW_REQUIRED, ContentStatus.FAILED);
         this.status = ContentStatus.FAILED;
-        this.publicationCheckedAt = OffsetDateTime.now();
+        this.publicationCheckedAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.publishedAt = null;
         this.failureReason = "User marked publication as failed after manual review";
         this.updatedAt = publicationCheckedAt;
@@ -387,7 +389,7 @@ public class Content {
 
         this.status = ContentStatus.FAILED;
         this.failureReason = reason.trim();
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public List<String> hashtags() {

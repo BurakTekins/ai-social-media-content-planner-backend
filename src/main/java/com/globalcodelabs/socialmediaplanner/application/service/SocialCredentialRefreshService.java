@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,7 +41,7 @@ public class SocialCredentialRefreshService {
                     CredentialType.SOCIAL_PLATFORM,
                     provider
             );
-            if (!refreshRequired(credential, provider, OffsetDateTime.now())) {
+            if (!refreshRequired(credential, provider, OffsetDateTime.now(ZoneOffset.UTC))) {
                 return credential;
             }
             refresh(credential);
@@ -59,7 +60,7 @@ public class SocialCredentialRefreshService {
                         CredentialType.SOCIAL_PLATFORM,
                         credential.providerName()
                 );
-                if (!refreshRequired(resolved, credential.providerName(), OffsetDateTime.now())) {
+                if (!refreshRequired(resolved, credential.providerName(), OffsetDateTime.now(ZoneOffset.UTC))) {
                     continue;
                 }
                 resolveValid(credential.providerName());
@@ -106,7 +107,7 @@ public class SocialCredentialRefreshService {
     }
 
     private void refresh(ResolvedApiCredential credential) {
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         try {
             RefreshedTokens tokens = switch (credential.providerName()) {
                 case "twitter" -> refreshX(credential, now);

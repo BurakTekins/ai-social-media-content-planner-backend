@@ -16,6 +16,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Set;
@@ -92,7 +93,7 @@ public class XIntegrationService {
             throw SocialIntegrationSupport.accountLookupException("X", exception);
         }
 
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         OffsetDateTime expiresAt = token.expiresIn() == null
                 ? null
                 : now.plusSeconds(token.expiresIn());

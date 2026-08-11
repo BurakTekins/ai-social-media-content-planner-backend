@@ -7,6 +7,7 @@ import com.twitter.twittertext.TwitterTextParseResults;
 import com.twitter.twittertext.TwitterTextParser;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -95,7 +96,7 @@ public final class ContentPolicy {
     }
 
     public static void validateScheduledAt(OffsetDateTime scheduledAt) {
-        if (scheduledAt == null || !scheduledAt.isAfter(OffsetDateTime.now())) {
+        if (scheduledAt == null || !scheduledAt.isAfter(OffsetDateTime.now(ZoneOffset.UTC))) {
             throw new DomainException("Scheduled time must be in the future");
         }
     }

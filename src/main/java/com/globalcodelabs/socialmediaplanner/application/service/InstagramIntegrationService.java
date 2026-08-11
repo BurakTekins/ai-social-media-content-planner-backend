@@ -12,6 +12,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -69,7 +70,9 @@ public class InstagramIntegrationService {
                 displayName(user),
                 token.accessToken(),
                 null,
-                token.expiresIn() == null ? null : OffsetDateTime.now().plusSeconds(token.expiresIn()),
+                token.expiresIn() == null
+                        ? null
+                        : OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(token.expiresIn()),
                 null,
                 permissions(shortToken.permissions())
         ));

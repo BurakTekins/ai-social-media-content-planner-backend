@@ -18,6 +18,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Set;
@@ -94,7 +95,7 @@ public class ApiCredential {
             String encryptedRefreshToken,
             OffsetDateTime expiresAt
     ) {
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         this.id = UUID.randomUUID();
         this.credentialType = requireCredentialType(credentialType);
         this.providerName = normalizeProviderName(providerName);
@@ -104,7 +105,7 @@ public class ApiCredential {
                 encryptedAccessToken, "Encrypted access token cannot be blank"
         );
         this.encryptedRefreshToken = optionalEncryptedToken(encryptedRefreshToken);
-        this.expiresAt = expiresAt;
+        this.expiresAt = toUtc(expiresAt);
         this.grantedScopes = new String[0];
         this.validationStatus = CredentialValidationStatus.UNVERIFIED;
         this.active = true;
@@ -135,11 +136,11 @@ public class ApiCredential {
                 encryptedAccessToken, "Encrypted access token cannot be blank"
         );
         this.encryptedRefreshToken = optionalEncryptedToken(encryptedRefreshToken);
-        this.expiresAt = expiresAt;
+        this.expiresAt = toUtc(expiresAt);
         this.validationStatus = CredentialValidationStatus.UNVERIFIED;
         this.lastValidatedAt = null;
         this.validationError = null;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void refreshTokens(
@@ -154,18 +155,18 @@ public class ApiCredential {
         if (encryptedRefreshToken != null) {
             this.encryptedRefreshToken = optionalEncryptedToken(encryptedRefreshToken);
         }
-        this.expiresAt = expiresAt;
+        this.expiresAt = toUtc(expiresAt);
         if (refreshTokenExpiresAt != null) {
-            this.refreshTokenExpiresAt = refreshTokenExpiresAt;
+            this.refreshTokenExpiresAt = toUtc(refreshTokenExpiresAt);
         }
         this.validationStatus = CredentialValidationStatus.VALID;
         this.validationError = null;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void updateAccountIdentifier(String accountIdentifier) {
         this.accountIdentifier = validateAccountIdentifier(providerName, accountIdentifier);
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void markValidated(
@@ -175,9 +176,9 @@ public class ApiCredential {
     ) {
         this.accountDisplayName = optionalText(accountDisplayName);
         this.grantedScopes = normalizeScopes(grantedScopes);
-        this.refreshTokenExpiresAt = refreshTokenExpiresAt;
+        this.refreshTokenExpiresAt = toUtc(refreshTokenExpiresAt);
         this.validationStatus = CredentialValidationStatus.VALID;
-        this.lastValidatedAt = OffsetDateTime.now();
+        this.lastValidatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.validationError = null;
         this.active = true;
         this.updatedAt = this.lastValidatedAt;
@@ -185,7 +186,7 @@ public class ApiCredential {
 
     public void markValidationFailed(String validationError) {
         this.validationStatus = CredentialValidationStatus.INVALID;
-        this.lastValidatedAt = OffsetDateTime.now();
+        this.lastValidatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.validationError = DomainValidation.requireText(
                 validationError,
                 "Validation error cannot be blank"
@@ -198,7 +199,7 @@ public class ApiCredential {
             return;
         }
         this.active = active;
-        this.updatedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public Set<String> grantedScopes() {
@@ -211,6 +212,10 @@ public class ApiCredential {
 
     public boolean expiredAt(OffsetDateTime time) {
         return expiresAt != null && !expiresAt.isAfter(time);
+    }
+
+    private static OffsetDateTime toUtc(OffsetDateTime value) {
+        return value == null ? null : value.withOffsetSameInstant(ZoneOffset.UTC);
     }
 
     private static String normalizeProviderName(String providerName) {

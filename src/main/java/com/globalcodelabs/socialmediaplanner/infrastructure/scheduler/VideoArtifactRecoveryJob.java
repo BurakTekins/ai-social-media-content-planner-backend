@@ -13,6 +13,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 @Slf4j
@@ -40,7 +41,7 @@ public class VideoArtifactRecoveryJob {
         try {
             var batchIds = generationAttemptRepository.findDueDownloadRecoveryBatchIds(
                     GenerationAttemptStatus.DOWNLOAD_FAILED,
-                    OffsetDateTime.now(),
+                    OffsetDateTime.now(ZoneOffset.UTC),
                     PageRequest.of(0, recoveryPolicy.batchSize())
             );
             if (batchIds.isEmpty()) {

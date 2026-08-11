@@ -19,6 +19,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
@@ -115,7 +116,8 @@ public class AiModelCache {
             throw new DomainException("Raw model metadata must be a JSON object");
         }
         this.rawMetadata = rawMetadata.deepCopy();
-        this.lastSyncedAt = Objects.requireNonNull(lastSyncedAt, "Last synced time cannot be null");
+        this.lastSyncedAt = Objects.requireNonNull(lastSyncedAt, "Last synced time cannot be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
     }
 
     private static String requireProviderName(String providerName) {

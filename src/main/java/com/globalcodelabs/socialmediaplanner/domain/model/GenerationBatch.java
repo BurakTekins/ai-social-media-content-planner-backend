@@ -26,6 +26,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -176,7 +177,7 @@ public class GenerationBatch {
         this.generationStrategy = strategySelection.strategy();
         this.strategySelectionReason = strategySelection.reason();
         this.strategyWarning = strategySelection.warning();
-        this.createdAt = OffsetDateTime.now();
+        this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.updatedAt = createdAt;
     }
 
@@ -203,13 +204,13 @@ public class GenerationBatch {
     public void addLinkSource(String url) {
         ensureInProgress();
         sources.add(ContentSource.create(this, ContentSourceType.LINK, url));
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void addDocumentSource(String storageKey) {
         ensureInProgress();
         sources.add(ContentSource.create(this, ContentSourceType.DOCUMENT, storageKey));
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void recordCompletedContent() {
@@ -218,7 +219,7 @@ public class GenerationBatch {
             throw new DomainException("Completed count cannot exceed requested count");
         }
         completedCount++;
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         if (completedCount == requestedCount) {
             status = GenerationBatchStatus.COMPLETED;
         }
@@ -230,7 +231,7 @@ public class GenerationBatch {
             throw new DomainException("Persisted content count must be between zero and requested count");
         }
         completedCount = persistedContentCount;
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         if (completedCount == requestedCount) {
             status = GenerationBatchStatus.COMPLETED;
         }
@@ -244,14 +245,14 @@ public class GenerationBatch {
         ensureInProgress();
         status = GenerationBatchStatus.FAILED;
         lastError = normalizedOptionalValue(errorMessage);
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void retry() {
         if (status != GenerationBatchStatus.FAILED) {
             throw new DomainException("Only failed generation batch can be retried");
         }
-        OffsetDateTime retriedAt = OffsetDateTime.now();
+        OffsetDateTime retriedAt = OffsetDateTime.now(ZoneOffset.UTC);
         status = GenerationBatchStatus.IN_PROGRESS;
         retryCount++;
         lastRetryAt = retriedAt;

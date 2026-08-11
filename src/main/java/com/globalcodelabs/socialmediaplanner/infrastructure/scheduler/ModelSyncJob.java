@@ -13,6 +13,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +36,7 @@ public class ModelSyncJob implements ApplicationRunner {
 
     @Scheduled(
             cron = "${models-dev.sync.cron:0 0 3 * * *}",
-            zone = "${models-dev.sync.zone:Europe/Istanbul}"
+            zone = "${models-dev.sync.zone:UTC}"
     )
     public void synchronizeDaily() {
         synchronize("scheduled");
@@ -52,7 +53,7 @@ public class ModelSyncJob implements ApplicationRunner {
         try {
             var models = modelsDevClient.fetchAll();
             logPricingCoverage(models);
-            modelCount = aiModelService.synchronize(models, OffsetDateTime.now());
+            modelCount = aiModelService.synchronize(models, OffsetDateTime.now(ZoneOffset.UTC));
             successful = true;
         } catch (RuntimeException exception) {
             log.error("AI model sync job failed trigger={}", trigger, exception);
