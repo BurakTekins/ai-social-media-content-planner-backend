@@ -1,6 +1,11 @@
 package com.globalcodelabs.socialmediaplanner.domain.model;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentSourceStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationBatchStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationStrategy;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -168,6 +173,59 @@ class GenerationBatchTest {
     }
 
     @Test
+    void enforcesInstagramPostMediaCombinations() {
+        GenerationBatch imagePost = createMediaBatch(Platform.INSTAGRAM, ContentType.POST, true, false);
+
+        assertThat(imagePost.includeImage()).isTrue();
+        assertThat(imagePost.includeVideo()).isFalse();
+        assertThatThrownBy(() -> createMediaBatch(Platform.INSTAGRAM, ContentType.POST, false, false))
+                .isInstanceOf(DomainException.class)
+                .hasMessage("Instagram POST requires an image");
+        assertThatThrownBy(() -> createMediaBatch(Platform.INSTAGRAM, ContentType.POST, true, true))
+                .isInstanceOf(DomainException.class)
+                .hasMessageContaining("use Instagram REEL");
+        assertThatThrownBy(() -> createMediaBatch(Platform.INSTAGRAM, ContentType.POST, false, true))
+                .isInstanceOf(DomainException.class)
+                .hasMessageContaining("use Instagram REEL");
+    }
+
+    @Test
+    void enforcesInstagramReelMediaCombinations() {
+        GenerationBatch videoReel = createMediaBatch(Platform.INSTAGRAM, ContentType.REEL, false, true);
+        GenerationBatch coverAndVideoReel = createMediaBatch(Platform.INSTAGRAM, ContentType.REEL, true, true);
+
+        assertThat(videoReel.includeVideo()).isTrue();
+        assertThat(coverAndVideoReel.includeImage()).isTrue();
+        assertThat(coverAndVideoReel.includeVideo()).isTrue();
+        assertThatThrownBy(() -> createMediaBatch(Platform.INSTAGRAM, ContentType.REEL, false, false))
+                .isInstanceOf(DomainException.class)
+                .hasMessageContaining("requires a video");
+        assertThatThrownBy(() -> createMediaBatch(Platform.INSTAGRAM, ContentType.REEL, true, false))
+                .isInstanceOf(DomainException.class)
+                .hasMessageContaining("requires a video");
+    }
+
+    @Test
+    void enforcesLinkedInSingleMediaTypeRule() {
+        assertThat(createMediaBatch(Platform.LINKEDIN, ContentType.POST, false, false)).isNotNull();
+        assertThat(createMediaBatch(Platform.LINKEDIN, ContentType.POST, true, false)).isNotNull();
+        assertThat(createMediaBatch(Platform.LINKEDIN, ContentType.POST, false, true)).isNotNull();
+        assertThatThrownBy(() -> createMediaBatch(Platform.LINKEDIN, ContentType.POST, true, true))
+                .isInstanceOf(DomainException.class)
+                .hasMessage("LinkedIn content cannot include both an image and a video; choose only one media type");
+    }
+
+    @Test
+    void enforcesTwitterSingleMediaTypeRule() {
+        assertThat(createMediaBatch(Platform.TWITTER, ContentType.TWEET, false, false)).isNotNull();
+        assertThat(createMediaBatch(Platform.TWITTER, ContentType.TWEET, true, false)).isNotNull();
+        assertThat(createMediaBatch(Platform.TWITTER, ContentType.TWEET, false, true)).isNotNull();
+        assertThatThrownBy(() -> createMediaBatch(Platform.TWITTER, ContentType.TWEET, true, true))
+                .isInstanceOf(DomainException.class)
+                .hasMessage("X (Twitter) content cannot include both an image and a video; choose only one media type");
+    }
+
+    @Test
     void rejectsBlankTextProviderOrModel() {
         assertThatThrownBy(() -> createBatch(
                 Platform.LINKEDIN, ContentType.POST, 1,
@@ -277,8 +335,13 @@ class GenerationBatchTest {
             String videoModel
     ) {
         return GenerationBatch.create(
-                platform, contentType, requestedCount, includeImage, includeVideo,
-                textProvider, textModel, imageProvider, imageModel, videoProvider, videoModel,
+                "Test batch",
+                platform,
+                contentType,
+                requestedCount,
+                AiModelSelection.required(textProvider, textModel, "Text"),
+                AiModelSelection.optional(includeImage, imageProvider, imageModel, "image"),
+                AiModelSelection.optional(includeVideo, videoProvider, videoModel, "video"),
                 null, 1
         );
     }
@@ -289,9 +352,32 @@ class GenerationBatchTest {
             GenerationStrategy strategy
     ) {
         return GenerationBatch.create(
-                Platform.LINKEDIN, ContentType.POST, requestedCount,
-                false, false, "openai", "text-model", null, null, null, null,
+                "Test batch", Platform.LINKEDIN, ContentType.POST, requestedCount,
+                AiModelSelection.required("openai", "text-model", "Text"),
+                null,
+                null,
                 strategy, sourceCount
+        );
+    }
+
+    private static GenerationBatch createMediaBatch(
+            Platform platform,
+            ContentType contentType,
+            boolean includeImage,
+            boolean includeVideo
+    ) {
+        return createBatch(
+                platform,
+                contentType,
+                1,
+                includeImage,
+                includeVideo,
+                "openai",
+                "text-model",
+                includeImage ? "gemini" : null,
+                includeImage ? "image-model" : null,
+                includeVideo ? "qwen" : null,
+                includeVideo ? "video-model" : null
         );
     }
 

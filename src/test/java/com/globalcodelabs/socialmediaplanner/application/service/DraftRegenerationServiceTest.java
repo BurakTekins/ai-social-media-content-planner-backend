@@ -1,19 +1,18 @@
-package com.globalcodelabs.socialmediaplanner.application.service.impl;
+package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiGenerationResult;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderCapabilityResolver;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderClient;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderClientResolver;
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.GeneratedMediaContentLoader;
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.MediaStorage;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationResult;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderClient;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderFactory;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.media.MediaContentLoader;
+import com.globalcodelabs.socialmediaplanner.infrastructure.storage.LocalMediaStorage;
 import com.globalcodelabs.socialmediaplanner.application.service.ContentService;
 import com.globalcodelabs.socialmediaplanner.common.exception.ContentOperationNotAllowedException;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.Content;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,34 +32,30 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class DraftRegenerationServiceImplTest {
+class DraftRegenerationServiceTest {
 
     @Mock
     private ContentService contentService;
 
     @Mock
-    private AiProviderClientResolver aiProviderClientResolver;
+    private AiProviderFactory aiProviderFactory;
 
     @Mock
-    private AiProviderCapabilityResolver aiProviderCapabilityResolver;
+    private MediaContentLoader generatedMediaContentLoader;
 
     @Mock
-    private GeneratedMediaContentLoader generatedMediaContentLoader;
-
-    @Mock
-    private MediaStorage mediaStorage;
+    private LocalMediaStorage mediaStorage;
 
     @Mock
     private AiProviderClient aiProviderClient;
 
-    private DraftRegenerationServiceImpl draftRegenerationService;
+    private DraftRegenerationService draftRegenerationService;
 
     @BeforeEach
     void setUp() {
-        draftRegenerationService = new DraftRegenerationServiceImpl(
+        draftRegenerationService = new DraftRegenerationService(
                 contentService,
-                aiProviderClientResolver,
-                aiProviderCapabilityResolver,
+                aiProviderFactory,
                 generatedMediaContentLoader,
                 mediaStorage,
                 new ObjectMapper()
@@ -72,8 +67,8 @@ class DraftRegenerationServiceImplTest {
         Content content = draft();
         UUID contentId = content.id();
         when(contentService.findById(contentId)).thenReturn(content);
-        when(aiProviderCapabilityResolver.supports("openai", AiCapability.TEXT)).thenReturn(true);
-        when(aiProviderClientResolver.resolve("openai")).thenReturn(aiProviderClient);
+        when(aiProviderFactory.supports("openai", AiCapability.TEXT)).thenReturn(true);
+        when(aiProviderFactory.resolve("openai")).thenReturn(aiProviderClient);
         when(aiProviderClient.generate(argThat(request ->
                 request.capability() == AiCapability.TEXT
                         && request.prompt().contains("Platform: LINKEDIN")
@@ -114,8 +109,8 @@ class DraftRegenerationServiceImplTest {
         Content content = draft();
         UUID contentId = content.id();
         when(contentService.findById(contentId)).thenReturn(content);
-        when(aiProviderCapabilityResolver.supports("gemini", AiCapability.IMAGE)).thenReturn(true);
-        when(aiProviderClientResolver.resolve("gemini")).thenReturn(aiProviderClient);
+        when(aiProviderFactory.supports("gemini", AiCapability.IMAGE)).thenReturn(true);
+        when(aiProviderFactory.resolve("gemini")).thenReturn(aiProviderClient);
         when(aiProviderClient.generate(argThat(request -> request.capability() == AiCapability.IMAGE)))
                 .thenReturn(new AiGenerationResult(
                         AiCapability.IMAGE,
@@ -158,8 +153,7 @@ class DraftRegenerationServiceImplTest {
         )).isInstanceOf(ContentOperationNotAllowedException.class);
 
         verifyNoInteractions(
-                aiProviderClientResolver,
-                aiProviderCapabilityResolver,
+                aiProviderFactory,
                 aiProviderClient,
                 generatedMediaContentLoader,
                 mediaStorage
@@ -168,6 +162,7 @@ class DraftRegenerationServiceImplTest {
 
     private static Content draft() {
         return Content.create(
+                "Current draft title",
                 Platform.LINKEDIN,
                 ContentType.POST,
                 "Current draft",

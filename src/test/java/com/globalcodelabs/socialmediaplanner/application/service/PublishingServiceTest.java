@@ -1,19 +1,19 @@
-package com.globalcodelabs.socialmediaplanner.application.service.impl;
+package com.globalcodelabs.socialmediaplanner.application.service;
 
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentRequest;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentResult;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.SocialPlatformClient;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.SocialPlatformClientResolver;
-import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialResolver;
-import com.globalcodelabs.socialmediaplanner.application.service.GeneralSettingsService;
-import com.globalcodelabs.socialmediaplanner.application.service.ResolvedApiCredential;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentRequest;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentResult;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PlatformPublishingFailureMapper;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishingProperties;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClient;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClientFactory;
 import com.globalcodelabs.socialmediaplanner.common.exception.ApiCredentialUnavailableException;
 import com.globalcodelabs.socialmediaplanner.domain.model.Content;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentStatus;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
-import com.globalcodelabs.socialmediaplanner.domain.model.CredentialType;
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.domain.model.PublishAttempt;
 import com.globalcodelabs.socialmediaplanner.domain.repository.ContentRepository;
 import com.globalcodelabs.socialmediaplanner.domain.repository.PublishAttemptRepository;
@@ -36,9 +36,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
-class PublishingServiceImplTest {
+class PublishingServiceTest {
 
     @Mock
     private ContentRepository contentRepository;
@@ -47,10 +48,10 @@ class PublishingServiceImplTest {
     private PublishAttemptRepository publishAttemptRepository;
 
     @Mock
-    private ApiCredentialResolver apiCredentialResolver;
+    private ApiCredentialService apiCredentialService;
 
     @Mock
-    private SocialPlatformClientResolver socialPlatformClientResolver;
+    private SocialPlatformClientFactory socialPlatformClientFactory;
 
     @Mock
     private SocialPlatformClient socialPlatformClient;
@@ -61,25 +62,31 @@ class PublishingServiceImplTest {
     @Mock
     private GeneralSettingsService generalSettingsService;
 
-    private PublishingServiceImpl publishingService;
+    @Mock
+    private SocialCredentialRefreshService credentialRefreshService;
+
+    private PublishingService publishingService;
 
     @BeforeEach
     void setUp() {
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> invocation
                 .<org.springframework.transaction.support.TransactionCallback<?>>getArgument(0)
                 .doInTransaction(null));
-        doAnswer(invocation -> {
+        lenient().doAnswer(invocation -> {
             invocation.<java.util.function.Consumer<org.springframework.transaction.TransactionStatus>>getArgument(0)
                     .accept(null);
             return null;
         }).when(transactionTemplate).executeWithoutResult(any());
-        publishingService = new PublishingServiceImpl(
+        publishingService = new PublishingService(
                 contentRepository,
                 publishAttemptRepository,
-                apiCredentialResolver,
-                socialPlatformClientResolver,
+                apiCredentialService,
+                credentialRefreshService,
+                socialPlatformClientFactory,
                 transactionTemplate,
-                generalSettingsService
+                generalSettingsService,
+                new PublishingProperties(),
+                new PlatformPublishingFailureMapper(new ObjectMapper())
         );
     }
 
@@ -90,9 +97,11 @@ class PublishingServiceImplTest {
         when(contentRepository.lockNextDueContentId(any())).thenReturn(Optional.of(content.id()));
         when(contentRepository.findWithMediaById(content.id())).thenReturn(Optional.of(content));
         when(contentRepository.findById(content.id())).thenReturn(Optional.of(content));
-        when(apiCredentialResolver.resolveActive(CredentialType.SOCIAL_PLATFORM, "linkedin"))
+        when(apiCredentialService.resolveActiveIncludingExpired(
+                CredentialType.SOCIAL_PLATFORM, "linkedin"
+        ))
                 .thenReturn(credential);
-        when(socialPlatformClientResolver.resolve(Platform.LINKEDIN))
+        when(socialPlatformClientFactory.resolve(Platform.LINKEDIN))
                 .thenReturn(socialPlatformClient);
         when(socialPlatformClient.publish(any()))
                 .thenReturn(new PublishContentResult("linkedin-post-123"));
@@ -127,9 +136,11 @@ class PublishingServiceImplTest {
         when(contentRepository.lockNextDueContentId(any())).thenReturn(Optional.of(content.id()));
         when(contentRepository.findWithMediaById(content.id())).thenReturn(Optional.of(content));
         when(contentRepository.findById(content.id())).thenReturn(Optional.of(content));
-        when(apiCredentialResolver.resolveActive(CredentialType.SOCIAL_PLATFORM, "linkedin"))
+        when(apiCredentialService.resolveActiveIncludingExpired(
+                CredentialType.SOCIAL_PLATFORM, "linkedin"
+        ))
                 .thenReturn(credential);
-        when(socialPlatformClientResolver.resolve(Platform.LINKEDIN))
+        when(socialPlatformClientFactory.resolve(Platform.LINKEDIN))
                 .thenReturn(socialPlatformClient);
         when(socialPlatformClient.publish(any())).thenThrow(
                 new IllegalStateException(
@@ -154,7 +165,9 @@ class PublishingServiceImplTest {
         when(contentRepository.lockNextDueContentId(any())).thenReturn(Optional.of(content.id()));
         when(contentRepository.findWithMediaById(content.id())).thenReturn(Optional.of(content));
         when(contentRepository.findById(content.id())).thenReturn(Optional.of(content));
-        when(apiCredentialResolver.resolveActive(CredentialType.SOCIAL_PLATFORM, "linkedin"))
+        when(apiCredentialService.resolveActiveIncludingExpired(
+                CredentialType.SOCIAL_PLATFORM, "linkedin"
+        ))
                 .thenThrow(new ApiCredentialUnavailableException(
                         CredentialType.SOCIAL_PLATFORM,
                         "linkedin"
@@ -170,7 +183,7 @@ class PublishingServiceImplTest {
         verify(publishAttemptRepository).save(attemptCaptor.capture());
         assertThat(attemptCaptor.getValue().success()).isFalse();
         assertThat(attemptCaptor.getValue().errorMessage()).isEqualTo(content.failureReason());
-        verifyNoInteractions(socialPlatformClientResolver, socialPlatformClient);
+        verifyNoInteractions(socialPlatformClientFactory, socialPlatformClient);
     }
 
     @Test
@@ -182,14 +195,15 @@ class PublishingServiceImplTest {
         assertThat(processed).isFalse();
         verifyNoInteractions(
                 publishAttemptRepository,
-                apiCredentialResolver,
-                socialPlatformClientResolver,
+                apiCredentialService,
+                socialPlatformClientFactory,
                 socialPlatformClient
         );
     }
 
     private static Content scheduledLinkedInContent() {
         Content content = Content.create(
+                "Scheduled LinkedIn post",
                 Platform.LINKEDIN,
                 ContentType.POST,
                 "Scheduled post",
@@ -215,7 +229,8 @@ class PublishingServiceImplTest {
                 "urn:li:person:123",
                 "secret-access-token",
                 null,
-                OffsetDateTime.now().plusDays(30)
+                OffsetDateTime.now().plusDays(30),
+                null
         );
     }
 }

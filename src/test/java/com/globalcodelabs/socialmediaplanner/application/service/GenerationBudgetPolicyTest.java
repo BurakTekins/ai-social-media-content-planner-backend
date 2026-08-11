@@ -1,11 +1,11 @@
-package com.globalcodelabs.socialmediaplanner.infrastructure.budget;
+package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.globalcodelabs.socialmediaplanner.application.service.GenerationBudgetPolicy;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiModelCache;
 import com.globalcodelabs.socialmediaplanner.domain.repository.AiModelCacheRepository;
+import com.globalcodelabs.socialmediaplanner.infrastructure.budget.GenerationBudgetProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class ConfigurableGenerationBudgetPolicyTest {
+class GenerationBudgetPolicyTest {
 
     @Mock
     private AiModelCacheRepository aiModelCacheRepository;
@@ -29,7 +29,7 @@ class ConfigurableGenerationBudgetPolicyTest {
     void rejectsRequestedVideoCountAboveConfiguredLimit() {
         GenerationBudgetProperties properties = properties();
         properties.setMaxVideosPerBatch(3);
-        ConfigurableGenerationBudgetPolicy policy = policy(properties);
+        GenerationBudgetPolicy policy = policy(properties);
 
         assertThatThrownBy(() -> policy.validate(request(4, false, true)))
                 .isInstanceOf(DomainException.class)
@@ -44,7 +44,7 @@ class ConfigurableGenerationBudgetPolicyTest {
         when(aiModelCacheRepository.findByProviderNameAndModelIdAndCapability(
                 "openai", "missing-model", AiCapability.TEXT
         )).thenReturn(Optional.empty());
-        ConfigurableGenerationBudgetPolicy policy = policy(properties);
+        GenerationBudgetPolicy policy = policy(properties);
 
         assertThatThrownBy(() -> policy.validate(request(2, true, true)))
                 .isInstanceOf(DomainException.class)
@@ -66,7 +66,7 @@ class ConfigurableGenerationBudgetPolicyTest {
         when(aiModelCacheRepository.findByProviderNameAndModelIdAndCapability(
                 "openai", "priced-model", AiCapability.TEXT
         )).thenReturn(Optional.of(cachedModel));
-        ConfigurableGenerationBudgetPolicy policy = policy(properties);
+        GenerationBudgetPolicy policy = policy(properties);
 
         GenerationBudgetPolicy.Estimate estimate = policy.estimate(new GenerationBudgetPolicy.Request(
                 10,
@@ -87,7 +87,7 @@ class ConfigurableGenerationBudgetPolicyTest {
     @Test
     void exposesConfiguredLimitsForClients() {
         GenerationBudgetProperties properties = properties();
-        ConfigurableGenerationBudgetPolicy policy = policy(properties);
+        GenerationBudgetPolicy policy = policy(properties);
 
         var limits = policy.limits();
 
@@ -102,8 +102,8 @@ class ConfigurableGenerationBudgetPolicyTest {
         assertThat(limits.estimatedVideoCostUsdPerItem()).isEqualByComparingTo("1.00");
     }
 
-    private ConfigurableGenerationBudgetPolicy policy(GenerationBudgetProperties properties) {
-        return new ConfigurableGenerationBudgetPolicy(properties, aiModelCacheRepository);
+    private GenerationBudgetPolicy policy(GenerationBudgetProperties properties) {
+        return new GenerationBudgetPolicy(properties, aiModelCacheRepository);
     }
 
     private static GenerationBudgetPolicy.Request request(

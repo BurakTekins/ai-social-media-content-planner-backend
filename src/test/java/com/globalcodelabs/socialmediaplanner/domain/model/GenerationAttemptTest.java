@@ -1,6 +1,8 @@
 package com.globalcodelabs.socialmediaplanner.domain.model;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationAttemptStatus;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;

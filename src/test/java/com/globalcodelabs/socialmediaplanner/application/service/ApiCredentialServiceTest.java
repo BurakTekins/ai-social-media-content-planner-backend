@@ -1,10 +1,10 @@
-package com.globalcodelabs.socialmediaplanner.application.service.impl;
+package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.application.command.CreateApiCredentialCommand;
-import com.globalcodelabs.socialmediaplanner.application.port.out.security.CredentialCipher;
+import com.globalcodelabs.socialmediaplanner.infrastructure.encryption.AesGcmCredentialCipher;
 import com.globalcodelabs.socialmediaplanner.application.service.ResolvedApiCredential;
 import com.globalcodelabs.socialmediaplanner.domain.model.ApiCredential;
-import com.globalcodelabs.socialmediaplanner.domain.model.CredentialType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
 import com.globalcodelabs.socialmediaplanner.domain.repository.ApiCredentialRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,16 +21,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class ApiCredentialServiceImplTest {
+class ApiCredentialServiceTest {
 
     @Mock
     private ApiCredentialRepository apiCredentialRepository;
 
     @Mock
-    private CredentialCipher credentialCipher;
+    private AesGcmCredentialCipher credentialCipher;
 
     @InjectMocks
-    private ApiCredentialServiceImpl service;
+    private ApiCredentialService service;
 
     @Test
     void createsCredentialWithAccountIdentifier() {

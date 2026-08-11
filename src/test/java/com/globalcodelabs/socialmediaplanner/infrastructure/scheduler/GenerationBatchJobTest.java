@@ -1,21 +1,23 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.scheduler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiGenerationRequest;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiGenerationResult;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderClient;
-import com.globalcodelabs.socialmediaplanner.application.port.out.extraction.SourceTextExtractor;
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.MediaStorage;
-import com.globalcodelabs.socialmediaplanner.application.service.impl.GeneratedContentFinalizer;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationRequest;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationResult;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderClient;
+import com.globalcodelabs.socialmediaplanner.infrastructure.extraction.DefaultSourceTextExtractor;
+import com.globalcodelabs.socialmediaplanner.infrastructure.storage.LocalMediaStorage;
+import com.globalcodelabs.socialmediaplanner.application.service.GeneratedContentFinalizer;
 import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponseException;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.model.AiModelSelection;
+import com.globalcodelabs.socialmediaplanner.domain.model.Content;
 import com.globalcodelabs.socialmediaplanner.domain.model.ContentSource;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttempt;
-import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttemptStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationAttemptStatus;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.domain.repository.ContentRepository;
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationAttemptRepository;
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationBatchRepository;
@@ -66,7 +68,7 @@ class GenerationBatchJobTest {
     private GeneratedContentFinalizer generatedContentFinalizer;
 
     @Mock
-    private SourceTextExtractor sourceTextExtractor;
+    private DefaultSourceTextExtractor sourceTextExtractor;
 
     @Mock
     private AiProviderFactory aiProviderFactory;
@@ -75,7 +77,7 @@ class GenerationBatchJobTest {
     private MediaContentLoader mediaContentLoader;
 
     @Mock
-    private MediaStorage mediaStorage;
+    private LocalMediaStorage mediaStorage;
 
     @Mock
     private AiProviderClient aiProviderClient;
@@ -128,10 +130,13 @@ class GenerationBatchJobTest {
         verify(sourceTextExtractor, never()).extract(any(), anyString());
 
         InOrder persistenceOrder = inOrder(generationAttemptRepository, aiProviderClient, generatedContentFinalizer);
+        ArgumentCaptor<Content> contentCaptor = ArgumentCaptor.forClass(Content.class);
         persistenceOrder.verify(generationAttemptRepository).saveAndFlush(any(GenerationAttempt.class));
         persistenceOrder.verify(aiProviderClient).generate(any());
         persistenceOrder.verify(generationAttemptRepository).saveAndFlush(any(GenerationAttempt.class));
-        persistenceOrder.verify(generatedContentFinalizer).storeGeneratedContent(eq(batch.id()), eq(2), any());
+        persistenceOrder.verify(generatedContentFinalizer)
+                .storeGeneratedContent(eq(batch.id()), eq(2), contentCaptor.capture());
+        assertThat(contentCaptor.getValue().title()).isEqualTo("Completed source 2");
     }
 
     @Test
@@ -172,15 +177,11 @@ class GenerationBatchJobTest {
     @Test
     void ordersSourcesBeforeBuildingPrompt() {
         GenerationBatch batch = GenerationBatch.create(
+                "Ordered sources",
                 Platform.LINKEDIN,
                 ContentType.POST,
                 1,
-                false,
-                false,
-                "mock",
-                "text-model",
-                null,
-                null,
+                AiModelSelection.required("mock", "text-model", "Text"),
                 null,
                 null,
                 null,
@@ -376,15 +377,11 @@ class GenerationBatchJobTest {
 
     private static GenerationBatch batchWithCompletedSource(int requestedCount) {
         GenerationBatch batch = GenerationBatch.create(
+                "Completed source",
                 Platform.LINKEDIN,
                 ContentType.POST,
                 requestedCount,
-                false,
-                false,
-                "mock",
-                "text-model",
-                null,
-                null,
+                AiModelSelection.required("mock", "text-model", "Text"),
                 null,
                 null,
                 null,
@@ -399,16 +396,12 @@ class GenerationBatchJobTest {
 
     private static GenerationBatch batchWithCompletedSourceAndImage() {
         GenerationBatch batch = GenerationBatch.create(
+                "Image content",
                 Platform.INSTAGRAM,
                 ContentType.POST,
                 1,
-                true,
-                false,
-                "mock",
-                "text-model",
-                "mock",
-                "image-model",
-                null,
+                AiModelSelection.required("mock", "text-model", "Text"),
+                AiModelSelection.required("mock", "image-model", "image"),
                 null,
                 null,
                 1

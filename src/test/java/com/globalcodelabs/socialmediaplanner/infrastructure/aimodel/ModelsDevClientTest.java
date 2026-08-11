@@ -2,8 +2,8 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.aimodel;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.globalcodelabs.socialmediaplanner.application.port.out.aimodel.ModelsDevCatalogClient.ModelData;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.infrastructure.aimodel.ModelData;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;

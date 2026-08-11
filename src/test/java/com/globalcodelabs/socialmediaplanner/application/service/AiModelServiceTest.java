@@ -1,10 +1,10 @@
-package com.globalcodelabs.socialmediaplanner.application.service.impl;
+package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.globalcodelabs.socialmediaplanner.application.port.out.aimodel.ModelsDevCatalogClient.ModelData;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderCapabilityResolver;
+import com.globalcodelabs.socialmediaplanner.infrastructure.aimodel.ModelData;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderFactory;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiModelCache;
 import com.globalcodelabs.socialmediaplanner.domain.repository.AiModelCacheRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,12 +21,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class AiModelServiceImplTest {
+class AiModelServiceTest {
 
     private static final OffsetDateTime INITIAL_SYNCED_AT =
             OffsetDateTime.parse("2026-07-29T03:00:00+03:00");
@@ -36,13 +37,15 @@ class AiModelServiceImplTest {
     @Mock
     private AiModelCacheRepository aiModelCacheRepository;
 
+    @Mock
+    private AiProviderFactory aiProviderFactory;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final AiProviderCapabilityResolver allCapabilities = (provider, capability) -> true;
-    private AiModelServiceImpl aiModelService;
+    private AiModelService aiModelService;
 
     @BeforeEach
     void setUp() {
-        aiModelService = new AiModelServiceImpl(aiModelCacheRepository, allCapabilities);
+        aiModelService = new AiModelService(aiModelCacheRepository, aiProviderFactory);
     }
 
     @Test
@@ -147,9 +150,12 @@ class AiModelServiceImplTest {
         );
         when(aiModelCacheRepository.findAllByFilters(null, null))
                 .thenReturn(List.of(textModel, videoModel));
-        AiModelServiceImpl realModeService = new AiModelServiceImpl(
+        AiProviderFactory realModeProviderFactory = mock(AiProviderFactory.class);
+        when(realModeProviderFactory.supports("openai", AiCapability.TEXT)).thenReturn(true);
+        when(realModeProviderFactory.supports("openai", AiCapability.VIDEO)).thenReturn(false);
+        AiModelService realModeService = new AiModelService(
                 aiModelCacheRepository,
-                (provider, capability) -> capability != AiCapability.VIDEO
+                realModeProviderFactory
         );
 
         List<AiModelCache> result = realModeService.findAll(null, null);

@@ -1,19 +1,21 @@
-package com.globalcodelabs.socialmediaplanner.application.service.impl;
+package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.application.command.CreateGenerationBatchCommand;
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.DocumentStorage;
+import com.globalcodelabs.socialmediaplanner.infrastructure.storage.LocalDocumentStorage;
 import com.globalcodelabs.socialmediaplanner.application.service.GenerationBudgetPolicy;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.common.exception.GenerationBatchNotFoundException;
 import com.globalcodelabs.socialmediaplanner.common.exception.GenerationBatchRetryConflictException;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
-import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttemptStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.model.AiModelSelection;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationAttemptStatus;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
-import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatchStatus;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationBatchStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationAttemptRepository;
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationBatchRepository;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,10 +33,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class GenerationBatchServiceImplTest {
+class GenerationBatchServiceTest {
 
     @Mock
     private GenerationBatchRepository generationBatchRepository;
@@ -43,20 +46,23 @@ class GenerationBatchServiceImplTest {
     private GenerationAttemptRepository generationAttemptRepository;
 
     @Mock
-    private DocumentStorage documentStorage;
+    private LocalDocumentStorage documentStorage;
 
     @Mock
     private GenerationBudgetPolicy generationBudgetPolicy;
 
-    private GenerationBatchServiceImpl generationBatchService;
+    @Mock
+    private AiProviderFactory aiProviderFactory;
+
+    private GenerationBatchService generationBatchService;
 
     @BeforeEach
     void setUp() {
-        generationBatchService = new GenerationBatchServiceImpl(
+        generationBatchService = new GenerationBatchService(
                 generationBatchRepository,
                 generationAttemptRepository,
                 documentStorage,
-                (provider, capability) -> true,
+                aiProviderFactory,
                 generationBudgetPolicy
         );
     }
@@ -137,16 +143,20 @@ class GenerationBatchServiceImplTest {
 
     @Test
     void rejectsUnsupportedVideoProviderBeforePersistingOrStoringDocuments() {
-        GenerationBatchServiceImpl realModeService = new GenerationBatchServiceImpl(
+        AiProviderFactory realModeProviderFactory = mock(AiProviderFactory.class);
+        when(realModeProviderFactory.supports("openai", AiCapability.TEXT)).thenReturn(true);
+        when(realModeProviderFactory.supports("qwen", AiCapability.VIDEO)).thenReturn(false);
+        GenerationBatchService realModeService = new GenerationBatchService(
                 generationBatchRepository,
                 generationAttemptRepository,
                 documentStorage,
-                (provider, capability) -> capability != AiCapability.VIDEO,
+                realModeProviderFactory,
                 generationBudgetPolicy
         );
         CreateGenerationBatchCommand command = new CreateGenerationBatchCommand(
                 Platform.INSTAGRAM,
                 ContentType.REEL,
+                "Video batch",
                 1,
                 false,
                 true,
@@ -154,7 +164,7 @@ class GenerationBatchServiceImplTest {
                 "text-model",
                 null,
                 null,
-                "gemini",
+                "qwen",
                 "video-model",
                 null,
                 List.of("https://example.com/source"),
@@ -172,6 +182,40 @@ class GenerationBatchServiceImplTest {
         );
     }
 
+    @Test
+    void rejectsMixedLinkedInMediaBeforeUsingDependencies() {
+        CreateGenerationBatchCommand command = new CreateGenerationBatchCommand(
+                Platform.LINKEDIN,
+                ContentType.POST,
+                "LinkedIn mixed media batch",
+                1,
+                true,
+                true,
+                "openai",
+                "text-model",
+                "gemini",
+                "image-model",
+                "qwen",
+                "video-model",
+                null,
+                List.of("https://example.com/source"),
+                List.of()
+        );
+
+        assertThatThrownBy(() -> generationBatchService.create(command))
+                .isInstanceOf(DomainException.class)
+                .hasMessageContaining("LinkedIn")
+                .hasMessageContaining("choose only one media type");
+
+        verifyNoInteractions(
+                generationBatchRepository,
+                generationAttemptRepository,
+                documentStorage,
+                aiProviderFactory,
+                generationBudgetPolicy
+        );
+    }
+
     private static GenerationBatch failedBatch() {
         GenerationBatch batch = createBatch();
         batch.markFailed("provider unavailable");
@@ -180,15 +224,11 @@ class GenerationBatchServiceImplTest {
 
     private static GenerationBatch createBatch() {
         return GenerationBatch.create(
+                "Test batch",
                 Platform.LINKEDIN,
                 ContentType.POST,
                 2,
-                false,
-                false,
-                "openai",
-                "text-model",
-                null,
-                null,
+                AiModelSelection.required("openai", "text-model", "Text"),
                 null,
                 null,
                 null,
