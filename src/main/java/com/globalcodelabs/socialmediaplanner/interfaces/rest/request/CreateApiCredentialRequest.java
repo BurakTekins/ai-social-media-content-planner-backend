@@ -1,6 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.request;
 
-import com.globalcodelabs.socialmediaplanner.domain.model.CredentialType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;

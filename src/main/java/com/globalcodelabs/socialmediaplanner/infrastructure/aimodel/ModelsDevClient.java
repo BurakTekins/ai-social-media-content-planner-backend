@@ -1,8 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.aimodel;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.globalcodelabs.socialmediaplanner.application.port.out.aimodel.ModelsDevCatalogClient;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -25,7 +24,7 @@ import java.util.Set;
 
 @Slf4j
 @Component
-public class ModelsDevClient implements ModelsDevCatalogClient {
+public class ModelsDevClient {
 
     private static final Map<String, String> PROVIDER_MAPPING = providerMapping();
 
@@ -59,7 +58,6 @@ public class ModelsDevClient implements ModelsDevCatalogClient {
         this.retryDelay = requireNonNegative(retryDelay);
     }
 
-    @Override
     public List<ModelData> fetchAll() {
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {

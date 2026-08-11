@@ -2,13 +2,13 @@ package com.globalcodelabs.socialmediaplanner.interfaces.rest.controller;
 
 import com.globalcodelabs.socialmediaplanner.application.command.CreateGenerationBatchCommand;
 import com.globalcodelabs.socialmediaplanner.application.command.UploadedDocument;
-import com.globalcodelabs.socialmediaplanner.application.service.GenerationBatchProcessingService;
+import com.globalcodelabs.socialmediaplanner.infrastructure.scheduler.GenerationBatchJob;
 import com.globalcodelabs.socialmediaplanner.application.service.GenerationBatchService;
 import com.globalcodelabs.socialmediaplanner.application.service.GenerationBudgetPolicy;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
-import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatchStatus;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationBatchStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.AiModelSelectionRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.CreateGenerationBatchRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.GenerationBudgetEstimateRequest;
@@ -46,7 +46,7 @@ import java.util.UUID;
 public class GenerationBatchController {
 
     private final GenerationBatchService generationBatchService;
-    private final GenerationBatchProcessingService generationBatchProcessingService;
+    private final GenerationBatchJob generationBatchProcessingService;
     private final GenerationBudgetPolicy generationBudgetPolicy;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -117,7 +117,7 @@ public class GenerationBatchController {
                 ? List.of()
                 : files.stream().map(this::toUploadedDocument).toList();
         return new CreateGenerationBatchCommand(
-                request.platform(), request.contentType(), request.requestedCount(),
+                request.platform(), request.contentType(), request.title(), request.requestedCount(),
                 request.includeImage(), request.includeVideo(),
                 request.textModel().provider(), request.textModel().model(),
                 provider(request.imageModel()), model(request.imageModel()),

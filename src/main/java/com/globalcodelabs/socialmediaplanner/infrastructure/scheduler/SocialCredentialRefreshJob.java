@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.scheduler;
 
-import com.globalcodelabs.socialmediaplanner.application.service.impl.SocialCredentialRefreshService;
+import com.globalcodelabs.socialmediaplanner.application.service.SocialCredentialRefreshService;
+import com.globalcodelabs.socialmediaplanner.common.exception.ApplicationException;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +39,11 @@ public class SocialCredentialRefreshJob {
                     (System.nanoTime() - startedAt) / 1_000_000
             );
         } catch (RuntimeException exception) {
-            log.error("Social credential refresh job failed", exception);
+            String error = exception instanceof ApplicationException applicationException
+                    ? applicationException.publicMessage()
+                    : exception.getClass().getSimpleName();
+            log.error("Social credential refresh job failed errorType={} error={}",
+                    exception.getClass().getSimpleName(), error, exception);
         } finally {
             MdcUtil.clear();
         }

@@ -33,7 +33,7 @@ public class ScheduledPublishingJob {
         int processedCount = 0;
         MdcUtil.putJobName(JOB_NAME);
         MdcUtil.putCorrelationId("job-%s-%s".formatted(JOB_NAME, UUID.randomUUID()));
-        log.info("Scheduled publishing job started");
+        log.debug("Scheduled publishing job started");
 
         try {
             int maxItemsPerRun = generalSettingsService.get().publishingMaxItemsPerRun();
@@ -63,11 +63,18 @@ public class ScheduledPublishingJob {
             );
         } finally {
             long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
-            log.info(
-                    "Scheduled publishing job finished processedCount={} durationMs={}",
-                    processedCount,
-                    durationMs
-            );
+            if (processedCount > 0) {
+                log.info(
+                        "Scheduled publishing job finished processedCount={} durationMs={}",
+                        processedCount,
+                        durationMs
+                );
+            } else {
+                log.debug(
+                        "Scheduled publishing job finished processedCount=0 durationMs={}",
+                        durationMs
+                );
+            }
             MdcUtil.clear();
         }
     }

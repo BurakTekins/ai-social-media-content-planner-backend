@@ -1,6 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.application.service;
 
-import com.globalcodelabs.socialmediaplanner.domain.model.CredentialType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;

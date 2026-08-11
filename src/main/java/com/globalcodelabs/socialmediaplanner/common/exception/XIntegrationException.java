@@ -1,16 +1,12 @@
 package com.globalcodelabs.socialmediaplanner.common.exception;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ResponseStatus;
-
-@ResponseStatus(HttpStatus.BAD_REQUEST)
-public class XIntegrationException extends RuntimeException {
+public class XIntegrationException extends ApplicationException {
 
     public XIntegrationException(String message) {
-        super(message);
+        super(ErrorCode.X_INTEGRATION_ERROR, message);
     }
 
     public XIntegrationException(String message, Throwable cause) {
-        super(message, cause);
+        super(ErrorCode.X_INTEGRATION_ERROR, message, cause);
     }
 }

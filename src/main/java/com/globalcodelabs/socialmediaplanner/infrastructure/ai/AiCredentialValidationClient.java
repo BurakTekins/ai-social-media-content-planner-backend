@@ -1,7 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.ai;
 
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiCredentialValidationResult;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiCredentialValidator;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiCredentialValidationResult;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
 import lombok.RequiredArgsConstructor;
@@ -14,14 +13,13 @@ import org.springframework.web.client.RestClientResponseException;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class AiCredentialValidationClient implements AiCredentialValidator {
+public class AiCredentialValidationClient {
 
     private static final String ANTHROPIC_VERSION = "2023-06-01";
 
     private final AiProviderProperties properties;
     private final AiRestClientFactory restClientFactory;
 
-    @Override
     public AiCredentialValidationResult validate(String providerName, String accessToken) {
         long startedAt = System.nanoTime();
         MdcUtil.putProvider(providerName);

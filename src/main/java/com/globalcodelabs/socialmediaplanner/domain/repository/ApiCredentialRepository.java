@@ -1,7 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.domain.repository;
 
 import com.globalcodelabs.socialmediaplanner.domain.model.ApiCredential;
-import com.globalcodelabs.socialmediaplanner.domain.model.CredentialType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

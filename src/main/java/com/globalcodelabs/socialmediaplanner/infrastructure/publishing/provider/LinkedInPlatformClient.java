@@ -2,15 +2,16 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.publishing.provider
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PlatformCredential;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentRequest;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentResult;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishMedia;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.SocialPlatformClient;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PlatformCredential;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.DefinitivePublishingException;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentRequest;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentResult;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishMedia;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClient;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishingProperties;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.config.PublishingRestClientFactory;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.media.MediaContent;
@@ -31,6 +32,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -70,17 +72,20 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
             );
             return new PublishContentResult(externalPostId);
         } catch (RestClientException exception) {
-            log.error(
-                    "Social platform call failed operation=publish contentId={} durationMs={} errorType={}",
-                    request.contentId(), elapsedMilliseconds(startedAt),
-                    exception.getClass().getSimpleName(), exception
-            );
+            logPublishFailure(request.contentId(), startedAt, exception);
             throw new IllegalStateException("LinkedIn API request failed", exception);
+        } catch (DefinitivePublishingException exception) {
+            log.warn(
+                    "Social platform call rejected operation=publish contentId={} durationMs={} providerCode={}",
+                    request.contentId(), elapsedMilliseconds(startedAt), exception.providerCode()
+            );
+            throw exception;
         } catch (RuntimeException exception) {
             log.error(
                     "Social platform call failed operation=publish contentId={} durationMs={} errorType={}",
                     request.contentId(), elapsedMilliseconds(startedAt),
-                    exception.getClass().getSimpleName(), exception
+                    exception.getClass().getSimpleName(),
+                    exception
             );
             throw exception;
         } finally {
@@ -90,25 +95,28 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
 
     @Override
     public boolean isPublished(String externalPostId, PlatformCredential credential) {
-        String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
-        String version = requireApiVersion(properties.requireVersion(PROVIDER_NAME));
-        try {
-            PostLookupResponse response = restClientFactory.forBaseUrl(baseUrl)
-                    .get()
-                    .uri(restClientFactory.endpoint(
-                            baseUrl, LinkedInApiPaths.POSTS + "/" + encodedUrn(externalPostId)
-                    ))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(credential))
-                    .header("Linkedin-Version", version)
-                    .header("X-Restli-Protocol-Version", RESTLI_PROTOCOL_VERSION)
-                    .retrieve()
-                    .body(PostLookupResponse.class);
-            return response != null && "PUBLISHED".equals(response.lifecycleState());
-        } catch (RestClientResponseException exception) {
-            if (exception.getStatusCode().value() == 404) {
-                return false;
-            }
-            throw exception;
+        if (externalPostId == null
+                || (!externalPostId.startsWith("urn:li:share:")
+                && !externalPostId.startsWith("urn:li:ugcPost:"))) {
+            throw new IllegalArgumentException("LinkedIn post id is invalid");
+        }
+        log.debug(
+                "LinkedIn publication accepted from create response externalPostId={}",
+                externalPostId
+        );
+        return true;
+    }
+
+    private static void logPublishFailure(UUID contentId, long startedAt, RestClientException exception) {
+        if (exception instanceof RestClientResponseException responseException
+                && responseException.getStatusCode().is4xxClientError()) {
+            log.warn("Social platform call rejected operation=publish contentId={} durationMs={} errorType={} httpStatus={}",
+                    contentId, elapsedMilliseconds(startedAt), exception.getClass().getSimpleName(),
+                    responseException.getStatusCode().value());
+        } else {
+            log.error("Social platform call failed operation=publish contentId={} durationMs={} errorType={}",
+                    contentId, elapsedMilliseconds(startedAt),
+                    exception.getClass().getSimpleName(), exception);
         }
     }
 
@@ -167,18 +175,16 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientException exception) {
-            throw new IllegalStateException("LinkedIn image upload failed");
+            throw new IllegalStateException("LinkedIn image upload failed", exception);
         }
-        if (owner.startsWith("urn:li:organization:")) {
-            waitUntilAvailable(
-                    baseUrl,
-                    version,
-                    credential,
-                    LinkedInApiPaths.imageStatus(encodedUrn(value.image())),
-                    provider.getPollInterval(),
-                    provider.getPollTimeout()
-            );
-        }
+        waitUntilAvailable(
+                baseUrl,
+                version,
+                credential,
+                LinkedInApiPaths.imageStatus(encodedUrn(value.image())),
+                provider.getPollInterval(),
+                provider.getPollTimeout()
+        );
         return value.image();
     }
 
@@ -257,7 +263,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
                         .retrieve()
                         .toBodilessEntity();
             } catch (RestClientException exception) {
-                throw new IllegalStateException("LinkedIn video part upload failed");
+                throw new IllegalStateException("LinkedIn video part upload failed", exception);
             }
             String etag = response.getHeaders().getFirst(HttpHeaders.ETAG);
             if (etag == null || etag.isBlank()) {
@@ -291,7 +297,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
                 return;
             }
             if ("PROCESSING_FAILED".equals(status)) {
-                throw new IllegalStateException("LinkedIn media processing failed");
+                throw new DefinitivePublishingException("LINKEDIN_MEDIA_PROCESSING_FAILED");
             }
             sleep(pollInterval);
         }
@@ -512,9 +518,6 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
     }
 
     private record PostContent(PostMedia media) {
-    }
-
-    private record PostLookupResponse(String lifecycleState) {
     }
 
     private record PostMedia(String id) {

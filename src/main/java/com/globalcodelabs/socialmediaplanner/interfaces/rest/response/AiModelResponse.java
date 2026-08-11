@@ -1,6 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.response;
 
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiModelCache;
 
 import java.time.OffsetDateTime;

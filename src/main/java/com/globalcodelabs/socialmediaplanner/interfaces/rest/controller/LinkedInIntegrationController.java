@@ -1,8 +1,9 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.controller;
 
-import com.globalcodelabs.socialmediaplanner.application.service.impl.LinkedInIntegrationService;
+import com.globalcodelabs.socialmediaplanner.application.service.LinkedInIntegrationService;
 import com.globalcodelabs.socialmediaplanner.common.exception.OAuthConnectionException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +17,7 @@ import java.net.URI;
 @RestController
 @RequestMapping("/api/integrations/linkedin")
 @RequiredArgsConstructor
+@Slf4j
 public class LinkedInIntegrationController {
     private final LinkedInIntegrationService service;
 
@@ -34,17 +36,23 @@ public class LinkedInIntegrationController {
             if (error != null && !error.isBlank()) {
                 status = "denied";
                 errorCode = "access_denied";
+                log.warn("OAuth authorization denied provider=linkedin errorCode={}", errorCode);
             }
             else service.complete(code, state);
         } catch (OAuthConnectionException exception) {
             status = "error";
             errorCode = exception.errorCode();
+            logOAuthFailure(errorCode, exception);
         } catch (IllegalStateException exception) {
             status = "error";
             errorCode = OAuthConnectionException.CONFIGURATION_ERROR;
+            log.error("OAuth callback configuration failed provider=linkedin errorCode={} errorType={}",
+                    errorCode, exception.getClass().getSimpleName(), exception);
         } catch (RuntimeException exception) {
             status = "error";
             errorCode = "unknown_error";
+            log.error("OAuth callback failed provider=linkedin errorCode={} errorType={}",
+                    errorCode, exception.getClass().getSimpleName(), exception);
         }
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(service.frontendRedirectUri(status, errorCode))).build();
@@ -52,4 +60,12 @@ public class LinkedInIntegrationController {
 
     @PostMapping("/validate")
     public LinkedInIntegrationService.ConnectionResult validate() { return service.validate(); }
+
+    private static void logOAuthFailure(String errorCode, OAuthConnectionException exception) {
+        if (exception.code().httpStatus().is5xxServerError()) {
+            log.error("OAuth callback failed provider=linkedin errorCode={}", errorCode, exception);
+        } else {
+            log.warn("OAuth callback failed provider=linkedin errorCode={}", errorCode);
+        }
+    }
 }

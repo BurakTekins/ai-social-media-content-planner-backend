@@ -1,6 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.controller;
 
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.PlatformResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

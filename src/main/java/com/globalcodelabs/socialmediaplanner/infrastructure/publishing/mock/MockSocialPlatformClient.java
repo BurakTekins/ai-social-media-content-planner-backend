@@ -1,10 +1,10 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.publishing.mock;
 
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentRequest;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentResult;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PlatformCredential;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.SocialPlatformClient;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentRequest;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentResult;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PlatformCredential;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClient;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import org.springframework.stereotype.Component;
 
 import java.util.Locale;

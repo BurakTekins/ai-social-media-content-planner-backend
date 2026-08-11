@@ -1,8 +1,8 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.response;
 
 import com.globalcodelabs.socialmediaplanner.domain.model.ApiCredential;
-import com.globalcodelabs.socialmediaplanner.domain.model.CredentialType;
-import com.globalcodelabs.socialmediaplanner.domain.model.CredentialValidationStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialValidationStatus;
 
 import java.time.OffsetDateTime;
 import java.util.Set;
@@ -20,6 +20,7 @@ public record ApiCredentialResponse(
         OffsetDateTime refreshTokenExpiresAt,
         CredentialValidationStatus validationStatus,
         OffsetDateTime lastValidatedAt,
+        String validationErrorCode,
         String validationError,
         boolean expired,
         boolean active,
@@ -27,6 +28,9 @@ public record ApiCredentialResponse(
         OffsetDateTime updatedAt
 ) {
     public static ApiCredentialResponse from(ApiCredential credential) {
+        UserFacingError validationError = UserFacingError.credential(
+                credential.providerName(), credential.validationError()
+        );
         return new ApiCredentialResponse(
                 credential.id(),
                 credential.credentialType(),
@@ -39,7 +43,8 @@ public record ApiCredentialResponse(
                 credential.refreshTokenExpiresAt(),
                 credential.validationStatus(),
                 credential.lastValidatedAt(),
-                credential.validationError(),
+                validationError == null ? null : validationError.code(),
+                validationError == null ? null : validationError.message(),
                 credential.expiredAt(OffsetDateTime.now()),
                 credential.active(),
                 credential.createdAt(),

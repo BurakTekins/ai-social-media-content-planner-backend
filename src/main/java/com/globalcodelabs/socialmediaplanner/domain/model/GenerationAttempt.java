@@ -1,6 +1,9 @@
 package com.globalcodelabs.socialmediaplanner.domain.model;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationAttemptStatus;
+import com.globalcodelabs.socialmediaplanner.domain.policy.DomainValidation;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -8,7 +11,9 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
 
 import java.time.OffsetDateTime;
 import java.util.Locale;
@@ -18,6 +23,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "generation_attempt")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter
+@Accessors(fluent = true)
 public class GenerationAttempt {
 
     @Id
@@ -93,8 +100,9 @@ public class GenerationAttempt {
         this.generationIndex = generationIndex;
         this.retryNumber = retryNumber;
         this.capability = Objects.requireNonNull(capability, "AI capability cannot be null");
-        this.provider = requireValue(provider, "AI provider cannot be blank").toLowerCase(Locale.ROOT);
-        this.model = requireValue(model, "AI model cannot be blank");
+        this.provider = DomainValidation.requireText(provider, "AI provider cannot be blank")
+                .toLowerCase(Locale.ROOT);
+        this.model = DomainValidation.requireText(model, "AI model cannot be blank");
         this.promptHash = requireHash(promptHash);
         this.status = GenerationAttemptStatus.STARTED;
         this.createdAt = OffsetDateTime.now();
@@ -140,7 +148,7 @@ public class GenerationAttempt {
                 || !model.equals(resultModel)) {
             throw new DomainException("AI generation result does not match attempt");
         }
-        this.output = requireValue(output, "AI generation output cannot be blank");
+        this.output = DomainValidation.requireText(output, "AI generation output cannot be blank");
         this.providerResponseId = optionalValue(providerResponseId);
         this.providerRequestId = optionalValue(providerRequestId);
         this.status = GenerationAttemptStatus.SUCCEEDED;
@@ -164,7 +172,10 @@ public class GenerationAttempt {
     ) {
         requireStatus(GenerationAttemptStatus.STARTED);
         this.status = submissionUnknown ? GenerationAttemptStatus.UNKNOWN : GenerationAttemptStatus.FAILED;
-        this.errorMessage = requireValue(errorMessage, "Generation attempt error cannot be blank");
+        this.errorMessage = DomainValidation.requireText(
+                errorMessage,
+                "Generation attempt error cannot be blank"
+        );
         this.providerResponseId = optionalValue(providerResponseId);
         this.providerRequestId = optionalValue(providerRequestId);
         this.updatedAt = OffsetDateTime.now();
@@ -173,87 +184,25 @@ public class GenerationAttempt {
     public void invalidate(String errorMessage) {
         requireStatus(GenerationAttemptStatus.SUCCEEDED);
         this.status = GenerationAttemptStatus.INVALID;
-        this.errorMessage = requireValue(errorMessage, "Generation attempt error cannot be blank");
+        this.errorMessage = DomainValidation.requireText(
+                errorMessage,
+                "Generation attempt error cannot be blank"
+        );
         this.updatedAt = OffsetDateTime.now();
     }
 
     public void recordStoredMedia(String storageKey, String mediaContentType) {
         requireStatus(GenerationAttemptStatus.SUCCEEDED);
-        this.storageKey = requireValue(storageKey, "Media storage key cannot be blank");
-        this.mediaContentType = requireValue(mediaContentType, "Media content type cannot be blank")
+        this.storageKey = DomainValidation.requireText(storageKey, "Media storage key cannot be blank");
+        this.mediaContentType = DomainValidation.requireText(
+                mediaContentType,
+                "Media content type cannot be blank"
+        )
                 .toLowerCase(Locale.ROOT);
         if (output != null && output.startsWith("data:")) {
             this.output = null;
         }
         this.updatedAt = OffsetDateTime.now();
-    }
-
-    public UUID id() {
-        return id;
-    }
-
-    public UUID batchId() {
-        return batchId;
-    }
-
-    public int generationIndex() {
-        return generationIndex;
-    }
-
-    public AiCapability capability() {
-        return capability;
-    }
-
-    public int retryNumber() {
-        return retryNumber;
-    }
-
-    public String provider() {
-        return provider;
-    }
-
-    public String model() {
-        return model;
-    }
-
-    public String promptHash() {
-        return promptHash;
-    }
-
-    public GenerationAttemptStatus status() {
-        return status;
-    }
-
-    public String providerResponseId() {
-        return providerResponseId;
-    }
-
-    public String providerRequestId() {
-        return providerRequestId;
-    }
-
-    public String output() {
-        return output;
-    }
-
-    public String storageKey() {
-        return storageKey;
-    }
-
-    public String mediaContentType() {
-        return mediaContentType;
-    }
-
-    public String errorMessage() {
-        return errorMessage;
-    }
-
-    public OffsetDateTime createdAt() {
-        return createdAt;
-    }
-
-    public OffsetDateTime updatedAt() {
-        return updatedAt;
     }
 
     private void requireStatus(GenerationAttemptStatus expected) {
@@ -263,21 +212,15 @@ public class GenerationAttempt {
     }
 
     private static String requireHash(String value) {
-        String hash = requireValue(value, "Prompt hash cannot be blank").toLowerCase(Locale.ROOT);
+        String hash = DomainValidation.requireText(value, "Prompt hash cannot be blank")
+                .toLowerCase(Locale.ROOT);
         if (!hash.matches("[0-9a-f]{64}")) {
             throw new DomainException("Prompt hash must be a SHA-256 value");
         }
         return hash;
     }
 
-    private static String requireValue(String value, String message) {
-        if (value == null || value.isBlank()) {
-            throw new DomainException(message);
-        }
-        return value.trim();
-    }
-
     private static String optionalValue(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+        return DomainValidation.normalizeOptionalText(value);
     }
 }

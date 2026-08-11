@@ -2,29 +2,29 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.scheduler;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiGenerationRequest;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiGenerationResult;
-import com.globalcodelabs.socialmediaplanner.application.port.out.extraction.SourceTextExtractor;
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.MediaStorage;
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.StoredMedia;
-import com.globalcodelabs.socialmediaplanner.application.service.GenerationBatchProcessingService;
-import com.globalcodelabs.socialmediaplanner.application.service.impl.GeneratedContentFinalizer;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationRequest;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationResult;
+import com.globalcodelabs.socialmediaplanner.infrastructure.extraction.DefaultSourceTextExtractor;
+import com.globalcodelabs.socialmediaplanner.infrastructure.storage.LocalMediaStorage;
+import com.globalcodelabs.socialmediaplanner.infrastructure.storage.StoredMedia;
+import com.globalcodelabs.socialmediaplanner.infrastructure.scheduler.GenerationBatchJob;
+import com.globalcodelabs.socialmediaplanner.application.service.GeneratedContentFinalizer;
 import com.globalcodelabs.socialmediaplanner.common.exception.ApiCredentialUnavailableException;
 import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponseException;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.Content;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
 import com.globalcodelabs.socialmediaplanner.domain.model.ContentSource;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentSourceStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentSourceStatus;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttempt;
-import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttemptStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationAttemptStatus;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
-import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatchStatus;
-import com.globalcodelabs.socialmediaplanner.domain.model.GenerationStrategy;
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationBatchStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationStrategy;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.domain.repository.ContentRepository;
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationAttemptRepository;
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationBatchRepository;
@@ -53,7 +53,7 @@ import java.util.UUID;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class GenerationBatchJob implements GenerationBatchProcessingService {
+public class GenerationBatchJob {
 
     private static final String JOB_NAME = "batch-generation";
     private static final List<GenerationAttemptStatus> IN_FLIGHT_ATTEMPT_STATUSES = List.of(
@@ -86,14 +86,13 @@ public class GenerationBatchJob implements GenerationBatchProcessingService {
     private final ContentRepository contentRepository;
     private final GenerationAttemptRepository generationAttemptRepository;
     private final GeneratedContentFinalizer generatedContentFinalizer;
-    private final SourceTextExtractor sourceTextExtractor;
+    private final DefaultSourceTextExtractor sourceTextExtractor;
     private final AiProviderFactory aiProviderFactory;
     private final MediaContentLoader mediaContentLoader;
-    private final MediaStorage mediaStorage;
+    private final LocalMediaStorage mediaStorage;
     private final ObjectMapper objectMapper;
 
     @Async("generationTaskExecutor")
-    @Override
     public void start(UUID batchId) {
         long startedAt = System.nanoTime();
         MdcUtil.putCorrelationId("job-" + JOB_NAME + "-" + UUID.randomUUID());
@@ -109,7 +108,8 @@ public class GenerationBatchJob implements GenerationBatchProcessingService {
         } catch (Exception exception) {
             markBatchFailed(batchId, exception);
             log.error("Generation batch job failed durationMs={} errorType={} error={}",
-                    elapsedMilliseconds(startedAt), exception.getClass().getSimpleName(), errorMessage(exception));
+                    elapsedMilliseconds(startedAt), exception.getClass().getSimpleName(),
+                    errorMessage(exception), exception);
         } finally {
             MdcUtil.clear();
         }
@@ -198,6 +198,7 @@ public class GenerationBatchJob implements GenerationBatchProcessingService {
         if (batch.includeVideo()) {
             addMedia(batch, index, content, MediaType.VIDEO, batch.videoProvider(), batch.videoModel());
         }
+        validateRequestedMedia(batch, content);
         return content;
     }
 
@@ -256,7 +257,8 @@ public class GenerationBatchJob implements GenerationBatchProcessingService {
 
     private Content createGeneratedContent(GenerationBatch batch, int index, GeneratedText generatedText) {
         return Content.createGenerated(
-                batch.platform(), batch.contentType(), generatedText.text(), generatedText.hashtags(),
+                generatedTitle(batch, index), batch.platform(), batch.contentType(),
+                generatedText.text(), generatedText.hashtags(),
                 batch.id(), index
         );
     }
@@ -278,7 +280,8 @@ public class GenerationBatchJob implements GenerationBatchProcessingService {
             remainingHashtags.removeLast();
             try {
                 Content content = Content.createGenerated(
-                        batch.platform(), batch.contentType(), generatedText.text(), remainingHashtags,
+                        generatedTitle(batch, index), batch.platform(), batch.contentType(),
+                        generatedText.text(), remainingHashtags,
                         batch.id(), index
                 );
                 log.warn(
@@ -291,6 +294,10 @@ public class GenerationBatchJob implements GenerationBatchProcessingService {
             }
         }
         throw originalFailure;
+    }
+
+    private static String generatedTitle(GenerationBatch batch, int index) {
+        return batch.title() + " " + index;
     }
 
     private void addMedia(
@@ -306,7 +313,7 @@ public class GenerationBatchJob implements GenerationBatchProcessingService {
                 batch,
                 generationIndex,
                 new AiGenerationRequest(
-                        provider, capability, "Generate media for: " + content.text(), model
+                        provider, capability, buildMediaPrompt(content, mediaType), model
                 )
         );
 
@@ -432,6 +439,9 @@ public class GenerationBatchJob implements GenerationBatchProcessingService {
                 Generate one distinct social media content item using the supplied source context.
                 Return only valid JSON with exactly these fields: text (string) and hashtags (array of strings).
                 Do not wrap the JSON in Markdown or add explanations.
+                Write in the natural language used by the sources unless they explicitly request another language.
+                Generate at least one hashtag relevant to both the source topic and the selected platform.
+                Do not add unrelated or generic trending hashtags. Return hashtags in descending order of relevance.
                 Treat every conditional offer, discount, benefit, eligibility rule, prerequisite, limitation, and duration
                 in the sources as one indivisible claim-condition unit. If you mention the claim, include all of its
                 conditions accurately; otherwise omit the entire claim. Never present a conditional claim as unconditional.
@@ -504,15 +514,47 @@ public class GenerationBatchJob implements GenerationBatchProcessingService {
             ContentType contentType
     ) {
         return switch (platform) {
-            case LINKEDIN -> "Use a professional, informative tone suitable for a LinkedIn post.";
+            case LINKEDIN -> "Use a professional, informative tone and a more detailed text format suitable for a "
+                    + "LinkedIn post. Keep the structure readable and use professional, topic-relevant hashtags.";
             case INSTAGRAM -> contentType == ContentType.REEL
-                    ? "Write a short, high-impact caption that complements video-first Reel content."
-                    : "Write a concise, engaging caption suitable for a visual Instagram feed post.";
+                    ? "Write a short, high-impact caption that complements visual and video-first Reel content. "
+                            + "Use concise, topic-relevant Instagram hashtags."
+                    : "Write a short, engaging caption suitable for a visual Instagram feed post. "
+                            + "Use topic-relevant Instagram hashtags.";
             case TWITTER -> "The published value is formatted as text, two newline characters, then "
                     + "space-separated hashtags prefixed with #. Its X weighted length must not exceed 280. "
                     + "Target at most 250 weighted characters, use at most 3 short hashtags, and use a concise Tweet format. "
                     + "Return hashtags in descending order of importance, with the most important hashtag first.";
         };
+    }
+
+    private static String buildMediaPrompt(Content content, MediaType mediaType) {
+        String formatRequirements = switch (content.platform()) {
+            case LINKEDIN -> "Use a professional visual style appropriate for a LinkedIn post.";
+            case INSTAGRAM -> content.contentType() == ContentType.REEL
+                    ? "Use a striking, short-form social media style appropriate for an Instagram Reel."
+                    : "Use an engaging, feed-ready visual style appropriate for an Instagram post.";
+            case TWITTER -> "Use a concise supporting visual style appropriate for an X post.";
+        };
+        return """
+                Generate one %s for the social media content below.
+                The media must directly represent the subject, message, and tone of the text.
+                Do not introduce unrelated products, claims, people, brands, or events.
+                Platform: %s
+                Content type: %s
+                Platform and format requirements: %s
+                Content text:
+                %s
+                Content hashtags:
+                %s
+                """.formatted(
+                mediaType,
+                content.platform(),
+                content.contentType(),
+                formatRequirements,
+                content.text(),
+                String.join(" ", content.hashtags())
+        );
     }
 
     private String buildCorrectionPrompt(
@@ -544,12 +586,24 @@ public class GenerationBatchJob implements GenerationBatchProcessingService {
             if (generatedText.text() == null || generatedText.text().isBlank()) {
                 throw new IllegalStateException("AI response text cannot be blank");
             }
+            if (generatedText.hashtags() == null || generatedText.hashtags().isEmpty()) {
+                throw new IllegalStateException("AI response must include at least one hashtag");
+            }
             return new GeneratedText(
                     generatedText.text(),
-                    generatedText.hashtags() == null ? List.of() : generatedText.hashtags()
+                    generatedText.hashtags()
             );
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("AI response is not valid content JSON", exception);
+        }
+    }
+
+    private static void validateRequestedMedia(GenerationBatch batch, Content content) {
+        if (batch.includeImage() && content.findMedia(MediaType.IMAGE).isEmpty()) {
+            throw new IllegalStateException("Generated content is missing the requested image");
+        }
+        if (batch.includeVideo() && content.findMedia(MediaType.VIDEO).isEmpty()) {
+            throw new IllegalStateException("Generated content is missing the requested video");
         }
     }
 

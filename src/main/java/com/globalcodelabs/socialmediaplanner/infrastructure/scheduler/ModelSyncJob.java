@@ -1,8 +1,8 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.scheduler;
 
-import com.globalcodelabs.socialmediaplanner.application.port.out.aimodel.ModelsDevCatalogClient;
 import com.globalcodelabs.socialmediaplanner.application.service.AiModelService;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
+import com.globalcodelabs.socialmediaplanner.infrastructure.aimodel.ModelsDevClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -20,7 +20,7 @@ public class ModelSyncJob implements ApplicationRunner {
 
     private static final String JOB_NAME = "ai-model-sync";
 
-    private final ModelsDevCatalogClient modelsDevCatalogClient;
+    private final ModelsDevClient modelsDevClient;
     private final AiModelService aiModelService;
 
     @Override
@@ -45,7 +45,7 @@ public class ModelSyncJob implements ApplicationRunner {
         log.info("AI model sync job started trigger={}", trigger);
 
         try {
-            var models = modelsDevCatalogClient.fetchAll();
+            var models = modelsDevClient.fetchAll();
             modelCount = aiModelService.synchronize(models, OffsetDateTime.now());
             successful = true;
         } catch (RuntimeException exception) {

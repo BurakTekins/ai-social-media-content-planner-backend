@@ -1,6 +1,9 @@
 package com.globalcodelabs.socialmediaplanner.domain.model;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialValidationStatus;
+import com.globalcodelabs.socialmediaplanner.domain.policy.DomainValidation;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -8,7 +11,9 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -21,6 +26,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "api_credential")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter
+@Accessors(fluent = true)
 public class ApiCredential {
 
     @Id
@@ -34,6 +41,7 @@ public class ApiCredential {
     private String providerName;
 
     @Column(name = "owner_id")
+    @Getter(AccessLevel.NONE)
     private UUID ownerId;
 
     @Column(name = "account_identifier", columnDefinition = "TEXT")
@@ -44,6 +52,7 @@ public class ApiCredential {
 
     @JdbcTypeCode(SqlTypes.ARRAY)
     @Column(name = "granted_scopes", nullable = false, columnDefinition = "TEXT[]")
+    @Getter(AccessLevel.NONE)
     private String[] grantedScopes;
 
     @Column(name = "encrypted_access_token", nullable = false, columnDefinition = "TEXT")
@@ -177,7 +186,10 @@ public class ApiCredential {
     public void markValidationFailed(String validationError) {
         this.validationStatus = CredentialValidationStatus.INVALID;
         this.lastValidatedAt = OffsetDateTime.now();
-        this.validationError = requireText(validationError, "Validation error cannot be blank");
+        this.validationError = DomainValidation.requireText(
+                validationError,
+                "Validation error cannot be blank"
+        );
         this.updatedAt = this.lastValidatedAt;
     }
 
@@ -189,76 +201,16 @@ public class ApiCredential {
         this.updatedAt = OffsetDateTime.now();
     }
 
-    public UUID id() {
-        return id;
-    }
-
-    public CredentialType credentialType() {
-        return credentialType;
-    }
-
-    public String providerName() {
-        return providerName;
-    }
-
-    public String accountIdentifier() {
-        return accountIdentifier;
-    }
-
-    public String accountDisplayName() {
-        return accountDisplayName;
-    }
-
     public Set<String> grantedScopes() {
         return Set.copyOf(Arrays.asList(grantedScopes));
-    }
-
-    public String encryptedAccessToken() {
-        return encryptedAccessToken;
-    }
-
-    public String encryptedRefreshToken() {
-        return encryptedRefreshToken;
     }
 
     public boolean hasRefreshToken() {
         return encryptedRefreshToken != null;
     }
 
-    public OffsetDateTime expiresAt() {
-        return expiresAt;
-    }
-
-    public OffsetDateTime refreshTokenExpiresAt() {
-        return refreshTokenExpiresAt;
-    }
-
-    public CredentialValidationStatus validationStatus() {
-        return validationStatus;
-    }
-
-    public OffsetDateTime lastValidatedAt() {
-        return lastValidatedAt;
-    }
-
-    public String validationError() {
-        return validationError;
-    }
-
-    public boolean active() {
-        return active;
-    }
-
     public boolean expiredAt(OffsetDateTime time) {
         return expiresAt != null && !expiresAt.isAfter(time);
-    }
-
-    public OffsetDateTime createdAt() {
-        return createdAt;
-    }
-
-    public OffsetDateTime updatedAt() {
-        return updatedAt;
     }
 
     private static String normalizeProviderName(String providerName) {
@@ -336,20 +288,15 @@ public class ApiCredential {
             return new String[0];
         }
         return scopes.stream()
-                .map(scope -> requireText(scope, "Granted scope cannot be blank"))
+                .map(scope -> DomainValidation.requireText(scope, "Granted scope cannot be blank"))
                 .distinct()
                 .sorted()
                 .toArray(String[]::new);
     }
 
     private static String optionalText(String value) {
-        return value == null ? null : requireText(value, "Text value cannot be blank");
-    }
-
-    private static String requireText(String value, String message) {
-        if (value == null || value.isBlank()) {
-            throw new DomainException(message);
-        }
-        return value.trim();
+        return value == null
+                ? null
+                : DomainValidation.requireText(value, "Text value cannot be blank");
     }
 }

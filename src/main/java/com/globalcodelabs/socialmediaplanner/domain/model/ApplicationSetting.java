@@ -5,20 +5,25 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
 
 import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "application_setting")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Accessors(fluent = true)
 public class ApplicationSetting {
 
     @Id
     @Column(name = "setting_key")
+    @Getter
     private String key;
 
     @Column(name = "setting_value", nullable = false)
+    @Getter
     private String value;
 
     @Column(name = "updated_at", nullable = false)
@@ -37,14 +42,6 @@ public class ApplicationSetting {
     public void update(String value) {
         this.value = requireValue(value, "Setting value cannot be blank");
         this.updatedAt = OffsetDateTime.now();
-    }
-
-    public String key() {
-        return key;
-    }
-
-    public String value() {
-        return value;
     }
 
     private static String requireValue(String value, String message) {

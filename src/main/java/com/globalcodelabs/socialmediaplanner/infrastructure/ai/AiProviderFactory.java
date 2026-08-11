@@ -1,16 +1,8 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.ai;
 
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderClient;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderCapabilityResolver;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderClientResolver;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.mock.MockAiProviderClient;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.provider.ClaudeProviderClient;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.provider.DeepSeekProviderClient;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.provider.GeminiProviderClient;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.provider.OpenAiProviderClient;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.provider.QwenProviderClient;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -21,7 +13,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Component
-public class AiProviderFactory implements AiProviderCapabilityResolver, AiProviderClientResolver {
+public class AiProviderFactory {
 
     private static final Map<String, Set<AiCapability>> REAL_PROVIDER_CAPABILITIES = Map.of(
             "openai", Set.of(AiCapability.TEXT, AiCapability.IMAGE),
@@ -38,27 +30,18 @@ public class AiProviderFactory implements AiProviderCapabilityResolver, AiProvid
     public AiProviderFactory(
             AiProviderProperties properties,
             MockAiProviderClient mockProviderClient,
-            OpenAiProviderClient openAiProviderClient,
-            ClaudeProviderClient claudeProviderClient,
-            GeminiProviderClient geminiProviderClient,
-            DeepSeekProviderClient deepSeekProviderClient,
-            QwenProviderClient qwenProviderClient
+            List<AiProviderClient> providerClients
     ) {
         this.properties = properties;
         this.mockProviderClient = mockProviderClient;
-        this.realProviderMap = List.<AiProviderClient>of(
-                openAiProviderClient,
-                claudeProviderClient,
-                geminiProviderClient,
-                deepSeekProviderClient,
-                qwenProviderClient
-        ).stream().collect(Collectors.toUnmodifiableMap(
-                client -> normalize(client.providerName()),
-                Function.identity()
-        ));
+        this.realProviderMap = providerClients.stream()
+                .filter(client -> client != mockProviderClient)
+                .collect(Collectors.toUnmodifiableMap(
+                        client -> normalize(client.providerName()),
+                        Function.identity()
+                ));
     }
 
-    @Override
     public AiProviderClient resolve(String providerName) {
         String normalizedProviderName = normalize(providerName);
         properties.requireProvider(normalizedProviderName);
@@ -72,7 +55,6 @@ public class AiProviderFactory implements AiProviderCapabilityResolver, AiProvid
         return providerClient;
     }
 
-    @Override
     public boolean supports(String providerName, AiCapability capability) {
         if (capability == null) {
             return false;

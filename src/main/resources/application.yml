@@ -163,6 +163,11 @@ publishing:
 
 server:
   port: ${SERVER_PORT:8080}
+  error:
+    include-stacktrace: never
+    include-exception: false
+    include-message: never
+    include-binding-errors: never
 
 springdoc:
   api-docs:

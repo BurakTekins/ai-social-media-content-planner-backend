@@ -1,7 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.response;
 
 import com.globalcodelabs.socialmediaplanner.domain.model.ContentMedia;
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;

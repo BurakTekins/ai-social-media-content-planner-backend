@@ -2,13 +2,13 @@ package com.globalcodelabs.socialmediaplanner.domain.model;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.common.exception.ContentOperationNotAllowedException;
-import com.globalcodelabs.socialmediaplanner.domain.event.ContentEvent;
-import com.globalcodelabs.socialmediaplanner.domain.event.ContentPublicationFailed;
-import com.globalcodelabs.socialmediaplanner.domain.event.ContentPublished;
-import com.globalcodelabs.socialmediaplanner.domain.event.ContentScheduled;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.policy.ContentPolicy;
+import com.globalcodelabs.socialmediaplanner.domain.policy.DomainValidation;
 import com.globalcodelabs.socialmediaplanner.common.exception.InvalidContentStateTransitionException;
-import com.twitter.twittertext.TwitterTextParseResults;
-import com.twitter.twittertext.TwitterTextParser;
 import jakarta.persistence.Column;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
@@ -17,15 +17,15 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
-import jakarta.persistence.Transient;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.BatchSize;
 import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
-import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -33,27 +33,19 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "content")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter
+@Accessors(fluent = true)
 public class Content {
-
-    private static final int TWITTER_MAX_CHARACTERS = 280;
-    private static final Pattern PROHIBITED_CLAIM_PATTERN = Pattern.compile(
-            "(?:\\b(?:garanti(?:li|si)?|garanti\\s+(?:eder|ediyor|edilir|sunar|sunuyor|verir)|"
-                    + "kesin\\s+(?:sonuc|basari|fayda|etki|cozum|verimlilik|iyilesme|kazanc)|"
-                    + "bilimsel\\s+olarak\\s+kanitlanmis|yuzde\\s*100|"
-                    + "(?:verimlilik|basari|sonuc|fayda|etki|kazanc)\\s+"
-                    + "(?:kazanin|kazanirsiniz|saglar|sunar)|"
-                    + "guaranteed|guarantees?|scientifically\\s+proven|proven\\s+results?)\\b|"
-                    + "%\\s*100\\b|\\b100\\s*%)"
-    );
 
     @Id
     private UUID id;
+
+    @Column(nullable = false, length = 255)
+    private String title;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -72,6 +64,7 @@ public class Content {
 
     @JdbcTypeCode(SqlTypes.ARRAY)
     @Column(nullable = false, columnDefinition = "TEXT[]")
+    @Getter(AccessLevel.NONE)
     private String[] hashtags;
 
     @Column(name = "batch_id")
@@ -88,6 +81,7 @@ public class Content {
 
     @OneToMany(mappedBy = "content", cascade = CascadeType.ALL, orphanRemoval = true)
     @BatchSize(size = 100)
+    @Getter(AccessLevel.NONE)
     private List<ContentMedia> media = new ArrayList<>();
 
     @Column(name = "scheduled_at")
@@ -117,11 +111,9 @@ public class Content {
     @Column(name = "failure_reason", columnDefinition = "TEXT")
     private String failureReason;
 
-    @Transient
-    private final List<ContentEvent> domainEvents = new ArrayList<>();
-
     private Content(
             UUID id,
+            String title,
             Platform platform,
             ContentType contentType,
             String text,
@@ -131,13 +123,13 @@ public class Content {
             OffsetDateTime createdAt
     ) {
         this.id = Objects.requireNonNull(id, "Content id cannot be null");
+        this.title = ContentPolicy.normalizeTitle(title);
         this.platform = Objects.requireNonNull(platform, "Platform cannot be null");
         this.contentType = Objects.requireNonNull(contentType, "Content type cannot be null");
-        validatePlatformContentType(this.platform, this.contentType);
-        this.text = requireText(text);
-        this.hashtags = sanitizeHashtags(hashtags);
-        validateClaims(this.text);
-        validatePublicationText(this.platform, this.text, this.hashtags);
+        ContentPolicy.validatePlatformContentType(this.platform, this.contentType);
+        this.text = DomainValidation.requireText(text, "Content text cannot be blank");
+        this.hashtags = ContentPolicy.sanitizeHashtags(hashtags);
+        ContentPolicy.validateContent(this.platform, this.text, this.hashtags);
         this.batchId = batchId;
         this.generationIndex = generationIndex;
         this.status = ContentStatus.DRAFT;
@@ -146,6 +138,7 @@ public class Content {
     }
 
     public static Content create(
+            String title,
             Platform platform,
             ContentType contentType,
             String text,
@@ -153,13 +146,14 @@ public class Content {
             UUID batchId
     ) {
         return new Content(
-                UUID.randomUUID(), platform, contentType, text, hashtags, batchId,
+                UUID.randomUUID(), title, platform, contentType, text, hashtags, batchId,
                 null,
                 OffsetDateTime.now()
         );
     }
 
     public static Content createGenerated(
+            String title,
             Platform platform,
             ContentType contentType,
             String text,
@@ -172,7 +166,7 @@ public class Content {
             throw new DomainException("Generation index must be greater than zero");
         }
         return new Content(
-                UUID.randomUUID(), platform, contentType, text, hashtags, batchId,
+                UUID.randomUUID(), title, platform, contentType, text, hashtags, batchId,
                 generationIndex, OffsetDateTime.now()
         );
     }
@@ -234,23 +228,28 @@ public class Content {
         if (status != ContentStatus.DRAFT) {
             throw new DomainException("Text generation metadata can only be changed for draft content");
         }
-        this.textProvider = requireGenerationValue(provider, "Text provider cannot be blank")
+        this.textProvider = DomainValidation.requireText(provider, "Text provider cannot be blank")
                 .toLowerCase(Locale.ROOT);
-        this.textModel = requireGenerationValue(model, "Text model cannot be blank");
+        this.textModel = DomainValidation.requireText(model, "Text model cannot be blank");
         this.updatedAt = OffsetDateTime.now();
     }
 
-    public void updateDraft(String text, List<String> hashtags) {
+    public void updateDraft(String title, String text, List<String> hashtags) {
         requireDraftOperation("Only draft content can be edited");
-        if (text == null && hashtags == null) {
-            throw new DomainException("At least one of text or hashtags must be provided");
+        if (title == null && text == null && hashtags == null) {
+            throw new DomainException("At least one of title, text or hashtags must be provided");
         }
 
-        String updatedText = text == null ? this.text : requireText(text);
-        String[] updatedHashtags = hashtags == null ? this.hashtags : sanitizeHashtags(hashtags);
-        validateClaims(updatedText);
-        validatePublicationText(platform, updatedText, updatedHashtags);
+        String updatedTitle = title == null ? this.title : ContentPolicy.normalizeTitle(title);
+        String updatedText = text == null
+                ? this.text
+                : DomainValidation.requireText(text, "Content text cannot be blank");
+        String[] updatedHashtags = hashtags == null
+                ? this.hashtags
+                : ContentPolicy.sanitizeHashtags(hashtags);
+        ContentPolicy.validateContent(platform, updatedText, updatedHashtags);
 
+        this.title = updatedTitle;
         this.text = updatedText;
         this.hashtags = updatedHashtags;
         this.updatedAt = OffsetDateTime.now();
@@ -258,28 +257,25 @@ public class Content {
 
     public void schedule(OffsetDateTime scheduledAt) {
         requireStatus(ContentStatus.DRAFT, ContentStatus.SCHEDULED);
-        validateScheduledAt(scheduledAt);
-        validateClaims(text);
-        validatePublicationText(platform, text, hashtags);
+        ContentPolicy.validateScheduledAt(scheduledAt);
+        ContentPolicy.validateContent(platform, text, hashtags);
 
         this.status = ContentStatus.SCHEDULED;
         this.scheduledAt = scheduledAt;
         this.updatedAt = OffsetDateTime.now();
-        this.domainEvents.add(new ContentScheduled(id, scheduledAt, updatedAt));
     }
 
     public void reschedule(OffsetDateTime scheduledAt) {
         requireStatus(ContentStatus.SCHEDULED, ContentStatus.SCHEDULED);
-        validateScheduledAt(scheduledAt);
+        ContentPolicy.validateScheduledAt(scheduledAt);
 
         this.scheduledAt = scheduledAt;
         this.updatedAt = OffsetDateTime.now();
-        this.domainEvents.add(new ContentScheduled(id, scheduledAt, updatedAt));
     }
 
     public void retryPublishing(OffsetDateTime scheduledAt) {
         requireStatus(ContentStatus.FAILED, ContentStatus.SCHEDULED);
-        validateScheduledAt(scheduledAt);
+        ContentPolicy.validateScheduledAt(scheduledAt);
 
         this.status = ContentStatus.SCHEDULED;
         this.scheduledAt = scheduledAt;
@@ -290,7 +286,6 @@ public class Content {
         this.publicationCheckedAt = null;
         this.failureReason = null;
         this.updatedAt = OffsetDateTime.now();
-        this.domainEvents.add(new ContentScheduled(id, scheduledAt, updatedAt));
     }
 
     public void cancelSchedule() {
@@ -324,7 +319,7 @@ public class Content {
 
     public void recordExternalPostId(String externalPostId) {
         requireStatus(ContentStatus.PUBLISHING, ContentStatus.PUBLISHING);
-        this.externalPostId = requireGenerationValue(externalPostId, "External post id cannot be blank");
+        this.externalPostId = DomainValidation.requireText(externalPostId, "External post id cannot be blank");
         this.publicationCheckedAt = OffsetDateTime.now();
         this.failureReason = null;
         this.updatedAt = publicationCheckedAt;
@@ -338,14 +333,17 @@ public class Content {
 
     public void markPublishingUncertain(String reason) {
         requireStatus(ContentStatus.PUBLISHING, ContentStatus.PUBLISHING);
-        this.failureReason = requireGenerationValue(reason, "Publishing uncertainty reason cannot be blank");
+        this.failureReason = DomainValidation.requireText(
+                reason,
+                "Publishing uncertainty reason cannot be blank"
+        );
         this.updatedAt = OffsetDateTime.now();
     }
 
     public void requirePublicationReview(String reason) {
         requireStatus(ContentStatus.PUBLISHING, ContentStatus.REVIEW_REQUIRED);
         this.status = ContentStatus.REVIEW_REQUIRED;
-        this.failureReason = requireGenerationValue(reason, "Publication review reason cannot be blank");
+        this.failureReason = DomainValidation.requireText(reason, "Publication review reason cannot be blank");
         this.updatedAt = OffsetDateTime.now();
     }
 
@@ -359,7 +357,6 @@ public class Content {
         this.publishedAt = OffsetDateTime.now();
         this.failureReason = null;
         this.updatedAt = publishedAt;
-        this.domainEvents.add(new ContentPublished(id, publishedAt));
     }
 
     public void markFailed(String reason) {
@@ -373,33 +370,6 @@ public class Content {
         this.status = ContentStatus.FAILED;
         this.failureReason = reason.trim();
         this.updatedAt = OffsetDateTime.now();
-        this.domainEvents.add(new ContentPublicationFailed(id, failureReason, updatedAt));
-    }
-
-    public List<ContentEvent> pullDomainEvents() {
-        List<ContentEvent> events = List.copyOf(domainEvents);
-        domainEvents.clear();
-        return events;
-    }
-
-    public UUID id() {
-        return id;
-    }
-
-    public Platform platform() {
-        return platform;
-    }
-
-    public ContentType contentType() {
-        return contentType;
-    }
-
-    public ContentStatus status() {
-        return status;
-    }
-
-    public String text() {
-        return text;
     }
 
     public List<String> hashtags() {
@@ -408,58 +378,6 @@ public class Content {
 
     public List<ContentMedia> media() {
         return List.copyOf(media);
-    }
-
-    public UUID batchId() {
-        return batchId;
-    }
-
-    public Integer generationIndex() {
-        return generationIndex;
-    }
-
-    public String textProvider() {
-        return textProvider;
-    }
-
-    public String textModel() {
-        return textModel;
-    }
-
-    public OffsetDateTime scheduledAt() {
-        return scheduledAt;
-    }
-
-    public OffsetDateTime publishedAt() {
-        return publishedAt;
-    }
-
-    public UUID publishOperationId() {
-        return publishOperationId;
-    }
-
-    public String externalPostId() {
-        return externalPostId;
-    }
-
-    public OffsetDateTime publishingStartedAt() {
-        return publishingStartedAt;
-    }
-
-    public OffsetDateTime publicationCheckedAt() {
-        return publicationCheckedAt;
-    }
-
-    public String failureReason() {
-        return failureReason;
-    }
-
-    public OffsetDateTime createdAt() {
-        return createdAt;
-    }
-
-    public OffsetDateTime updatedAt() {
-        return updatedAt;
     }
 
     private void requireStatus(ContentStatus expected, ContentStatus target) {
@@ -472,84 +390,6 @@ public class Content {
         if (status != ContentStatus.DRAFT) {
             throw new ContentOperationNotAllowedException(message);
         }
-    }
-
-    private static void validateScheduledAt(OffsetDateTime scheduledAt) {
-        if (scheduledAt == null || !scheduledAt.isAfter(OffsetDateTime.now())) {
-            throw new DomainException("Scheduled time must be in the future");
-        }
-    }
-
-    private static void validatePlatformContentType(Platform platform, ContentType contentType) {
-        if (!platform.supports(contentType)) {
-            throw new DomainException(
-                    "Content type %s is not supported for platform %s".formatted(contentType, platform)
-            );
-        }
-    }
-
-    private static String requireText(String text) {
-        if (text == null || text.isBlank()) {
-            throw new DomainException("Content text cannot be blank");
-        }
-        return text.trim();
-    }
-
-    private static String[] sanitizeHashtags(List<String> hashtags) {
-        if (hashtags == null) {
-            return new String[0];
-        }
-        if (hashtags.stream().anyMatch(hashtag -> hashtag == null || hashtag.isBlank())) {
-            throw new DomainException("Hashtags cannot contain blank values");
-        }
-        return hashtags.stream().map(String::trim).toArray(String[]::new);
-    }
-
-    private static void validatePublicationText(Platform platform, String text, String[] hashtags) {
-        if (platform != Platform.TWITTER) {
-            return;
-        }
-        String formattedText = formatPublicationText(text, hashtags);
-        TwitterTextParseResults parseResults = TwitterTextParser.parseTweet(formattedText);
-        if (parseResults.weightedLength > TWITTER_MAX_CHARACTERS) {
-            throw new DomainException(
-                    "Twitter content including hashtags has weighted length "
-                            + parseResults.weightedLength + " but cannot exceed "
-                            + TWITTER_MAX_CHARACTERS
-            );
-        }
-        if (!parseResults.isValid) {
-            throw new DomainException("Twitter content contains characters that X does not accept");
-        }
-    }
-
-    private static void validateClaims(String text) {
-        String normalizedText = Normalizer.normalize(text, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "")
-                .replace('ı', 'i')
-                .toLowerCase(Locale.ROOT);
-        if (PROHIBITED_CLAIM_PATTERN.matcher(normalizedText).find()) {
-            throw new DomainException(
-                    "Content contains a prohibited certainty, guarantee, or unsupported proof claim"
-            );
-        }
-    }
-
-    private static String formatPublicationText(String text, String[] hashtags) {
-        if (hashtags.length == 0) {
-            return text;
-        }
-        String formattedHashtags = Arrays.stream(hashtags)
-                .map(hashtag -> hashtag.startsWith("#") ? hashtag : "#" + hashtag)
-                .collect(Collectors.joining(" "));
-        return text + "\n\n" + formattedHashtags;
-    }
-
-    private static String requireGenerationValue(String value, String message) {
-        if (value == null || value.isBlank()) {
-            throw new DomainException(message);
-        }
-        return value.trim();
     }
 
 }

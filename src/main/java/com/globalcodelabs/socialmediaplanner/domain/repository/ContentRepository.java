@@ -1,8 +1,8 @@
 package com.globalcodelabs.socialmediaplanner.domain.repository;
 
 import com.globalcodelabs.socialmediaplanner.domain.model.Content;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentStatus;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -34,11 +34,16 @@ public interface ContentRepository extends JpaRepository<Content, UUID> {
             WHERE (:status IS NULL OR content.status = :status)
               AND (:platform IS NULL OR content.platform = :platform)
               AND (:batchId IS NULL OR content.batchId = :batchId)
+              AND (
+                    LOWER(content.title) LIKE CONCAT('%', LOWER(:searchTerm), '%')
+                    OR LOWER(content.text) LIKE CONCAT('%', LOWER(:searchTerm), '%')
+              )
             """)
     Page<Content> findAllByFilters(
             @Param("status") ContentStatus status,
             @Param("platform") Platform platform,
             @Param("batchId") UUID batchId,
+            @Param("searchTerm") String searchTerm,
             Pageable pageable
     );
 

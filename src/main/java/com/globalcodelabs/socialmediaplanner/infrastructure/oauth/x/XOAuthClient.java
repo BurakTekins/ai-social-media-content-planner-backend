@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.oauth.x;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -9,13 +10,16 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.util.function.Supplier;
 
 @Slf4j
 @Component
 public class XOAuthClient {
+    private static final String PROVIDER = "twitter";
 
     private final XOAuthProperties properties;
     private final RestClient restClient;
@@ -32,66 +36,99 @@ public class XOAuthClient {
     }
 
     public TokenResponse exchangeAuthorizationCode(String code, String codeVerifier) {
-        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("grant_type", "authorization_code");
-        form.add("code", code);
-        form.add("redirect_uri", properties.requireRedirectUri());
-        form.add("code_verifier", codeVerifier);
-        log.info("X OAuth call started operation=exchange-authorization-code provider=twitter");
-        TokenResponse response = restClient.post()
-                .uri(properties.requireTokenUri())
-                .headers(headers -> headers.setBasicAuth(
-                        properties.requireClientId(),
-                        properties.requireClientSecret(),
-                        StandardCharsets.UTF_8
-                ))
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(form)
-                .retrieve()
-                .body(TokenResponse.class);
-        if (response == null || response.accessToken() == null || response.accessToken().isBlank()) {
-            throw new IllegalStateException("X token endpoint did not return an access token");
-        }
-        log.info("X OAuth call completed operation=exchange-authorization-code provider=twitter");
-        return response;
+        return execute("exchange-authorization-code", () -> {
+            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            form.add("grant_type", "authorization_code");
+            form.add("code", code);
+            form.add("redirect_uri", properties.requireRedirectUri());
+            form.add("code_verifier", codeVerifier);
+            TokenResponse response = restClient.post()
+                    .uri(properties.requireTokenUri())
+                    .headers(headers -> headers.setBasicAuth(
+                            properties.requireClientId(),
+                            properties.requireClientSecret(),
+                            StandardCharsets.UTF_8
+                    ))
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .retrieve()
+                    .body(TokenResponse.class);
+            if (response == null || response.accessToken() == null || response.accessToken().isBlank()) {
+                throw new IllegalStateException("X token endpoint did not return an access token");
+            }
+            return response;
+        });
     }
 
     public TokenResponse refreshAccessToken(String refreshToken) {
-        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("grant_type", "refresh_token");
-        form.add("refresh_token", refreshToken);
-        log.info("X OAuth call started operation=refresh-access-token provider=twitter");
-        TokenResponse response = restClient.post()
-                .uri(properties.requireTokenUri())
-                .headers(headers -> headers.setBasicAuth(
-                        properties.requireClientId(),
-                        properties.requireClientSecret(),
-                        StandardCharsets.UTF_8
-                ))
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(form)
-                .retrieve()
-                .body(TokenResponse.class);
-        if (response == null || response.accessToken() == null || response.accessToken().isBlank()) {
-            throw new IllegalStateException("X token refresh did not return an access token");
-        }
-        log.info("X OAuth call completed operation=refresh-access-token provider=twitter");
-        return response;
+        return execute("refresh-access-token", () -> {
+            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            form.add("grant_type", "refresh_token");
+            form.add("refresh_token", refreshToken);
+            TokenResponse response = restClient.post()
+                    .uri(properties.requireTokenUri())
+                    .headers(headers -> headers.setBasicAuth(
+                            properties.requireClientId(),
+                            properties.requireClientSecret(),
+                            StandardCharsets.UTF_8
+                    ))
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .retrieve()
+                    .body(TokenResponse.class);
+            if (response == null || response.accessToken() == null || response.accessToken().isBlank()) {
+                throw new IllegalStateException("X token refresh did not return an access token");
+            }
+            return response;
+        });
     }
 
     public UserData getAuthenticatedUser(String accessToken) {
-        log.info("X API call started operation=get-authenticated-user provider=twitter");
-        UserResponse response = restClient.get()
-                .uri(properties.requireUserInfoUri())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
-                .retrieve()
-                .body(UserResponse.class);
-        if (response == null || response.data() == null
-                || response.data().id() == null || response.data().id().isBlank()) {
-            throw new IllegalStateException("X user endpoint did not return an account id");
+        return execute("get-authenticated-user", () -> {
+            UserResponse response = restClient.get()
+                    .uri(properties.requireUserInfoUri())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                    .retrieve()
+                    .body(UserResponse.class);
+            if (response == null || response.data() == null
+                    || response.data().id() == null || response.data().id().isBlank()) {
+                throw new IllegalStateException("X user endpoint did not return an account id");
+            }
+            return response.data();
+        });
+    }
+
+    private <T> T execute(String operation, Supplier<T> call) {
+        long startedAt = System.nanoTime();
+        MdcUtil.putProvider(PROVIDER);
+        try {
+            log.info("OAuth provider call started operation={}", operation);
+            T result = call.get();
+            log.info("OAuth provider call completed operation={} durationMs={}",
+                    operation, elapsedMilliseconds(startedAt));
+            return result;
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().is4xxClientError()) {
+                log.warn("OAuth provider call rejected operation={} httpStatus={} durationMs={}",
+                        operation, exception.getStatusCode().value(), elapsedMilliseconds(startedAt));
+            } else {
+                log.error("OAuth provider call failed operation={} httpStatus={} durationMs={}",
+                        operation, exception.getStatusCode().value(),
+                        elapsedMilliseconds(startedAt), exception);
+            }
+            throw exception;
+        } catch (RuntimeException exception) {
+            log.error("OAuth provider call failed operation={} errorType={} durationMs={}",
+                    operation, exception.getClass().getSimpleName(),
+                    elapsedMilliseconds(startedAt), exception);
+            throw exception;
+        } finally {
+            MdcUtil.removeProvider();
         }
-        log.info("X API call completed operation=get-authenticated-user provider=twitter");
-        return response.data();
+    }
+
+    private static long elapsedMilliseconds(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
     }
 
     public record TokenResponse(

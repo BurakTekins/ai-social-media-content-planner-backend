@@ -1,7 +1,5 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.storage;
 
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.DocumentStorage;
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.StoredDocument;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -16,7 +14,7 @@ import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
-public class LocalDocumentStorage implements DocumentStorage {
+public class LocalDocumentStorage {
 
     private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("pdf", "docx", "txt");
 
@@ -34,7 +32,6 @@ public class LocalDocumentStorage implements DocumentStorage {
         }
     }
 
-    @Override
     public StoredDocument store(String originalFilename, byte[] content) {
         if (content == null || content.length == 0) {
             throw new IllegalArgumentException("Document cannot be empty");
@@ -50,7 +47,6 @@ public class LocalDocumentStorage implements DocumentStorage {
         }
     }
 
-    @Override
     public byte[] read(String storageKey) {
         try {
             return Files.readAllBytes(resolveStorageKey(storageKey));
@@ -59,7 +55,6 @@ public class LocalDocumentStorage implements DocumentStorage {
         }
     }
 
-    @Override
     public void delete(String storageKey) {
         try {
             Files.deleteIfExists(resolveStorageKey(storageKey));

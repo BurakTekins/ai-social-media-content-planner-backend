@@ -10,17 +10,22 @@ public record PublishAttemptResponse(
         UUID contentId,
         OffsetDateTime attemptedAt,
         boolean success,
-        String errorMessage,
-        String externalPostId
+        String errorCode,
+        String errorMessage
 ) {
     public static PublishAttemptResponse from(PublishAttempt attempt, UUID contentId) {
+        UserFacingError error = UserFacingError.publishing(
+                attempt.platform(),
+                null,
+                attempt.errorMessage()
+        );
         return new PublishAttemptResponse(
                 attempt.id(),
                 contentId,
                 attempt.attemptedAt(),
                 attempt.success(),
-                attempt.errorMessage(),
-                attempt.externalPostId()
+                error == null ? null : error.code(),
+                error == null ? null : error.message()
         );
     }
 }

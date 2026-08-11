@@ -1,6 +1,9 @@
 package com.globalcodelabs.socialmediaplanner.domain.model;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentSourceStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentSourceType;
+import com.globalcodelabs.socialmediaplanner.domain.policy.DomainValidation;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,7 +14,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
 
 import java.time.OffsetDateTime;
 import java.util.Objects;
@@ -20,6 +25,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "content_source")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter
+@Accessors(fluent = true)
 public class ContentSource {
 
     @Id
@@ -27,6 +34,7 @@ public class ContentSource {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "batch_id", nullable = false)
+    @Getter(AccessLevel.NONE)
     private GenerationBatch batch;
 
     @Enumerated(EnumType.STRING)
@@ -53,7 +61,7 @@ public class ContentSource {
         this.id = UUID.randomUUID();
         this.batch = Objects.requireNonNull(batch, "Generation batch cannot be null");
         this.sourceType = Objects.requireNonNull(sourceType, "Source type cannot be null");
-        this.sourceValue = requireValue(sourceValue, "Source value cannot be blank");
+        this.sourceValue = DomainValidation.requireText(sourceValue, "Source value cannot be blank");
         this.status = ContentSourceStatus.PENDING;
         this.createdAt = OffsetDateTime.now();
     }
@@ -74,7 +82,10 @@ public class ContentSource {
 
     public void complete(String extractedText) {
         requireStatus(ContentSourceStatus.PROCESSING);
-        this.extractedText = requireValue(extractedText, "Extracted text cannot be blank");
+        this.extractedText = DomainValidation.requireText(
+                extractedText,
+                "Extracted text cannot be blank"
+        );
         this.status = ContentSourceStatus.COMPLETED;
         this.errorMessage = null;
     }
@@ -84,35 +95,10 @@ public class ContentSource {
             throw new DomainException("Only pending or processing source can fail");
         }
         this.status = ContentSourceStatus.FAILED;
-        this.errorMessage = requireValue(errorMessage, "Source error message cannot be blank");
-    }
-
-    public UUID id() {
-        return id;
-    }
-
-    public ContentSourceType sourceType() {
-        return sourceType;
-    }
-
-    public String sourceValue() {
-        return sourceValue;
-    }
-
-    public String extractedText() {
-        return extractedText;
-    }
-
-    public ContentSourceStatus status() {
-        return status;
-    }
-
-    public String errorMessage() {
-        return errorMessage;
-    }
-
-    public OffsetDateTime createdAt() {
-        return createdAt;
+        this.errorMessage = DomainValidation.requireText(
+                errorMessage,
+                "Source error message cannot be blank"
+        );
     }
 
     private void requireStatus(ContentSourceStatus expected) {
@@ -121,10 +107,4 @@ public class ContentSource {
         }
     }
 
-    private static String requireValue(String value, String message) {
-        if (value == null || value.isBlank()) {
-            throw new DomainException(message);
-        }
-        return value.trim();
-    }
 }
