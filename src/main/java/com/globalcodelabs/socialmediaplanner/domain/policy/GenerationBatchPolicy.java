@@ -1,25 +1,13 @@
 package com.globalcodelabs.socialmediaplanner.domain.policy;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
-import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
 import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationStrategy;
-import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
-
-import java.util.Objects;
 
 public final class GenerationBatchPolicy {
 
     private static final int MAX_BASE_TITLE_LENGTH = 240;
 
     private GenerationBatchPolicy() {
-    }
-
-    public static void validatePlatformContentType(Platform platform, ContentType contentType) {
-        Objects.requireNonNull(platform, "Platform cannot be null");
-        Objects.requireNonNull(contentType, "Content type cannot be null");
-        if (!platform.supports(contentType)) {
-            throw new DomainException("Content type " + contentType + " is not supported by " + platform);
-        }
     }
 
     public static String normalizeTitle(String title) {

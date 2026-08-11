@@ -3,7 +3,6 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.publishing.provider
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PlatformCredential;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.DefinitivePublishingException;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentRequest;
-import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentResult;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishMedia;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClient;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
@@ -45,7 +44,7 @@ public class InstagramPlatformClient implements SocialPlatformClient {
     }
 
     @Override
-    public PublishContentResult publish(PublishContentRequest request) {
+    public String publish(PublishContentRequest request) {
         validateRequest(request);
         String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
         String version = properties.requireVersion(PROVIDER_NAME);
@@ -69,7 +68,7 @@ public class InstagramPlatformClient implements SocialPlatformClient {
                     "Social platform call completed operation=publish contentId={} durationMs={}",
                     request.contentId(), elapsedMilliseconds(startedAt)
             );
-            return new PublishContentResult(externalPostId);
+            return externalPostId;
         } catch (RestClientException exception) {
             logPublishFailure(request.contentId(), startedAt, exception);
             throw new IllegalStateException("Instagram API request failed", exception);

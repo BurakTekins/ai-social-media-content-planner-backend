@@ -23,7 +23,6 @@ public enum ErrorCode {
     API_CREDENTIAL_ALREADY_EXISTS(HttpStatus.CONFLICT, "API credential already exists"),
     API_CREDENTIAL_UNAVAILABLE(HttpStatus.CONFLICT, "An active API credential is not available"),
     AI_PROVIDER_ERROR(HttpStatus.BAD_GATEWAY, "AI provider request failed"),
-    X_INTEGRATION_ERROR(HttpStatus.BAD_REQUEST, "X integration request failed"),
     OAUTH_STATE_INVALID("state_invalid", HttpStatus.BAD_REQUEST, "OAuth state is invalid or expired"),
     OAUTH_TOKEN_EXCHANGE_FAILED("token_exchange_failed", HttpStatus.BAD_GATEWAY, "OAuth token exchange failed"),
     OAUTH_ACCOUNT_LOOKUP_FAILED("account_lookup_failed", HttpStatus.BAD_GATEWAY, "OAuth account lookup failed"),

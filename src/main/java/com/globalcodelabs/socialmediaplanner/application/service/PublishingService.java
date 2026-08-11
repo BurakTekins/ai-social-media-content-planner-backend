@@ -2,7 +2,6 @@ package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PlatformCredential;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentRequest;
-import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentResult;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishMedia;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClient;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClientFactory;
@@ -146,9 +145,13 @@ public class PublishingService {
                 return;
             }
 
-            PublishContentResult result;
+            String externalPostId;
             try {
-                result = client.publish(request);
+                String returnedExternalPostId = client.publish(request);
+                if (returnedExternalPostId == null || returnedExternalPostId.isBlank()) {
+                    throw new IllegalStateException("Social platform did not return an external post id");
+                }
+                externalPostId = returnedExternalPostId.trim();
             } catch (RuntimeException exception) {
                 PlatformPublishingFailureMapper.Failure failure = publishingFailureMapper.map(
                         publication.platform(), exception
@@ -170,7 +173,7 @@ public class PublishingService {
             try {
                 transactionTemplate.executeWithoutResult(transactionStatus -> {
                     Content content = findContent(publication.contentId());
-                    content.recordExternalPostId(result.externalPostId());
+                    content.recordExternalPostId(externalPostId);
                 });
             } catch (RuntimeException exception) {
                 log.error(

@@ -14,8 +14,8 @@ import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.AiModelSele
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.RegenerateMediaRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.ScheduleContentRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.UpdateDraftContentRequest;
-import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.ContentPageResponse;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.ContentResponse;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.PageResponse;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.PublishAttemptResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -78,7 +78,7 @@ public class ContentController {
     }
 
     @GetMapping
-    public ContentPageResponse findAll(
+    public PageResponse<ContentResponse> findAll(
             @RequestParam(required = false) ContentStatus status,
             @RequestParam(required = false) Platform platform,
             @RequestParam(required = false) UUID batchId,
@@ -91,7 +91,10 @@ public class ContentController {
                 size,
                 Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))
         );
-        return ContentPageResponse.from(contentService.findAll(status, platform, batchId, title, pageRequest));
+        return PageResponse.from(
+                contentService.findAll(status, platform, batchId, title, pageRequest),
+                ContentResponse::from
+        );
     }
 
     @GetMapping("/status-counts")

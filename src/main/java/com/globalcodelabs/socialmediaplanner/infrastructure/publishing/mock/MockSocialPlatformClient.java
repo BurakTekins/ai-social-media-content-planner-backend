@@ -1,7 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.publishing.mock;
 
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentRequest;
-import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentResult;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PlatformCredential;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClient;
 import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
@@ -18,12 +17,11 @@ public class MockSocialPlatformClient implements SocialPlatformClient {
     }
 
     @Override
-    public PublishContentResult publish(PublishContentRequest request) {
-        String externalPostId = "mock-%s-%s".formatted(
+    public String publish(PublishContentRequest request) {
+        return "mock-%s-%s".formatted(
                 request.platform().name().toLowerCase(Locale.ROOT),
                 request.contentId()
         );
-        return new PublishContentResult(externalPostId);
     }
 
     @Override

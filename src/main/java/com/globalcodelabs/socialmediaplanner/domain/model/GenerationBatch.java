@@ -137,7 +137,6 @@ public class GenerationBatch {
             GenerationStrategy requestedStrategy,
             int sourceCount
     ) {
-        GenerationBatchPolicy.validatePlatformContentType(platform, contentType);
         ContentPolicy.validatePlatformMediaSelection(
                 platform,
                 contentType,

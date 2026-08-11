@@ -13,10 +13,11 @@ import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.AiModelSele
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.CreateGenerationBatchRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.GenerationBudgetEstimateRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBatchResponse;
-import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBatchPageResponse;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBatchSummaryResponse;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBudgetResponse;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBudgetEstimateResponse;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationAttemptResponse;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.PageResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -116,7 +117,7 @@ public class GenerationBatchController {
     }
 
     @GetMapping
-    public GenerationBatchPageResponse list(
+    public PageResponse<GenerationBatchSummaryResponse> list(
             @RequestParam(required = false) GenerationBatchStatus status,
             @RequestParam(required = false) Platform platform,
             @RequestParam(required = false) ContentType contentType,
@@ -128,8 +129,9 @@ public class GenerationBatchController {
                 size,
                 Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))
         );
-        return GenerationBatchPageResponse.from(
-                generationBatchService.list(status, platform, contentType, pageRequest)
+        return PageResponse.from(
+                generationBatchService.list(status, platform, contentType, pageRequest),
+                GenerationBatchSummaryResponse::from
         );
     }
 

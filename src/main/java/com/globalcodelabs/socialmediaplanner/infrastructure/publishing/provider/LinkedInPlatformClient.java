@@ -5,7 +5,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PlatformCredential;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.DefinitivePublishingException;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentRequest;
-import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentResult;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishMedia;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClient;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
@@ -60,7 +59,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
     }
 
     @Override
-    public PublishContentResult publish(PublishContentRequest request) {
+    public String publish(PublishContentRequest request) {
         validateRequest(request);
         PublishingProperties.Provider provider = properties.requireProvider(PROVIDER_NAME);
         String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
@@ -76,7 +75,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
                     "Social platform call completed operation=publish contentId={} durationMs={}",
                     request.contentId(), elapsedMilliseconds(startedAt)
             );
-            return new PublishContentResult(externalPostId);
+            return externalPostId;
         } catch (RestClientException exception) {
             logPublishFailure(request.contentId(), startedAt, exception);
             throw new IllegalStateException("LinkedIn API request failed", exception);

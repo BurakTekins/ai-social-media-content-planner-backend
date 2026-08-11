@@ -2,7 +2,6 @@ package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentRequest;
-import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentResult;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PlatformPublishingFailureMapper;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishingProperties;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClient;
@@ -104,7 +103,7 @@ class PublishingServiceTest {
         when(socialPlatformClientFactory.resolve(Platform.LINKEDIN))
                 .thenReturn(socialPlatformClient);
         when(socialPlatformClient.publish(any()))
-                .thenReturn(new PublishContentResult("linkedin-post-123"));
+                .thenReturn("linkedin-post-123");
         when(socialPlatformClient.isPublished(any(), any())).thenReturn(true);
 
         boolean processed = publishingService.publishNextDueContent();

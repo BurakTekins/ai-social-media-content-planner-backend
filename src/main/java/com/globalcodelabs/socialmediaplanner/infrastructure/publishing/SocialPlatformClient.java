@@ -6,7 +6,7 @@ public interface SocialPlatformClient {
 
     boolean supports(Platform platform);
 
-    PublishContentResult publish(PublishContentRequest request);
+    String publish(PublishContentRequest request);
 
     boolean isPublished(String externalPostId, PlatformCredential credential);
 }
