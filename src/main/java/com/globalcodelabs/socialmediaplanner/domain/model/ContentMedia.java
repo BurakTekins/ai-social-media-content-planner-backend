@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.domain.model;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,7 +12,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
 
 import java.net.URI;
 import java.time.OffsetDateTime;
@@ -21,6 +24,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "content_media")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter
+@Accessors(fluent = true)
 public class ContentMedia {
 
     @Id
@@ -28,6 +33,7 @@ public class ContentMedia {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "content_id", nullable = false)
+    @Getter(AccessLevel.NONE)
     private Content content;
 
     @Enumerated(EnumType.STRING)
@@ -91,34 +97,6 @@ public class ContentMedia {
         this.modelProvider = modelProvider;
         this.modelId = modelId;
         this.createdAt = OffsetDateTime.now();
-    }
-
-    public UUID id() {
-        return id;
-    }
-
-    public MediaType mediaType() {
-        return mediaType;
-    }
-
-    public String storageKey() {
-        return storageKey;
-    }
-
-    public String publicUrl() {
-        return publicUrl;
-    }
-
-    public String modelProvider() {
-        return modelProvider;
-    }
-
-    public String modelId() {
-        return modelId;
-    }
-
-    public OffsetDateTime createdAt() {
-        return createdAt;
     }
 
     private static String requireStorageKey(String storageKey) {

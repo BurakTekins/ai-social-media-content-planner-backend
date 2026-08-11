@@ -1,8 +1,8 @@
 package com.globalcodelabs.socialmediaplanner.domain.repository;
 
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttempt;
-import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttemptStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationAttemptStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;

@@ -1,13 +1,13 @@
 package com.globalcodelabs.socialmediaplanner.common.exception;
 
-import com.globalcodelabs.socialmediaplanner.domain.model.CredentialType;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ResponseStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
 
-@ResponseStatus(HttpStatus.CONFLICT)
-public class ApiCredentialAlreadyExistsException extends RuntimeException {
+public class ApiCredentialAlreadyExistsException extends ApplicationException {
 
     public ApiCredentialAlreadyExistsException(CredentialType credentialType, String providerName) {
-        super("Credential already exists for " + credentialType + " provider " + providerName);
+        super(
+                ErrorCode.API_CREDENTIAL_ALREADY_EXISTS,
+                "Credential already exists for " + credentialType + " provider " + providerName
+        );
     }
 }

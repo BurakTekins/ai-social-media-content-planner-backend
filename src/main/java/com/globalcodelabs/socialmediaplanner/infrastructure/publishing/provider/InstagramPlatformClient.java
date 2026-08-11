@@ -1,13 +1,14 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.publishing.provider;
 
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PlatformCredential;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentRequest;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentResult;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishMedia;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.SocialPlatformClient;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PlatformCredential;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.DefinitivePublishingException;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentRequest;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentResult;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishMedia;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClient;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishingProperties;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.config.PublishingRestClientFactory;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.net.InetAddress;
 import java.net.URI;
@@ -25,6 +27,7 @@ import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Component
@@ -68,21 +71,79 @@ public class InstagramPlatformClient implements SocialPlatformClient {
             );
             return new PublishContentResult(externalPostId);
         } catch (RestClientException exception) {
-            log.error(
-                    "Social platform call failed operation=publish contentId={} durationMs={} errorType={}",
-                    request.contentId(), elapsedMilliseconds(startedAt),
-                    exception.getClass().getSimpleName(), exception
-            );
+            logPublishFailure(request.contentId(), startedAt, exception);
             throw new IllegalStateException("Instagram API request failed", exception);
+        } catch (DefinitivePublishingException exception) {
+            log.warn(
+                    "Social platform call rejected operation=publish contentId={} durationMs={} providerCode={}",
+                    request.contentId(), elapsedMilliseconds(startedAt), exception.providerCode()
+            );
+            throw exception;
         } catch (RuntimeException exception) {
             log.error(
                     "Social platform call failed operation=publish contentId={} durationMs={} errorType={}",
                     request.contentId(), elapsedMilliseconds(startedAt),
-                    exception.getClass().getSimpleName(), exception
+                    exception.getClass().getSimpleName(),
+                    exception
             );
             throw exception;
         } finally {
             MdcUtil.removeProvider();
+        }
+    }
+
+    @Override
+    public boolean isPublished(String externalPostId, PlatformCredential credential) {
+        String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
+        String version = properties.requireVersion(PROVIDER_NAME);
+        long startedAt = System.nanoTime();
+        try {
+            log.info("Social platform call started operation=verify-publication externalPostId={}", externalPostId);
+            ContainerResponse response = restClientFactory.forBaseUrl(baseUrl)
+                    .get()
+                    .uri(restClientFactory.endpoint(
+                            baseUrl, version + "/" + externalPostId + "?fields=id"
+                    ))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                    .retrieve()
+                    .body(ContainerResponse.class);
+            boolean published = response != null && externalPostId.equals(response.id());
+            log.info("Social platform call completed operation=verify-publication externalPostId={} published={} durationMs={}",
+                    externalPostId, published, elapsedMilliseconds(startedAt));
+            return published;
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == 404) {
+                log.info("Social platform call completed operation=verify-publication externalPostId={} published=false httpStatus=404 durationMs={}",
+                        externalPostId, elapsedMilliseconds(startedAt));
+                return false;
+            }
+            if (exception.getStatusCode().is4xxClientError()) {
+                log.warn("Social platform call rejected operation=verify-publication externalPostId={} httpStatus={} durationMs={}",
+                        externalPostId, exception.getStatusCode().value(), elapsedMilliseconds(startedAt));
+            } else {
+                log.error("Social platform call failed operation=verify-publication externalPostId={} httpStatus={} durationMs={}",
+                        externalPostId, exception.getStatusCode().value(),
+                        elapsedMilliseconds(startedAt), exception);
+            }
+            throw exception;
+        } catch (RuntimeException exception) {
+            log.error("Social platform call failed operation=verify-publication externalPostId={} errorType={} durationMs={}",
+                    externalPostId, exception.getClass().getSimpleName(),
+                    elapsedMilliseconds(startedAt), exception);
+            throw exception;
+        }
+    }
+
+    private static void logPublishFailure(UUID contentId, long startedAt, RestClientException exception) {
+        if (exception instanceof RestClientResponseException responseException
+                && responseException.getStatusCode().is4xxClientError()) {
+            log.warn("Social platform call rejected operation=publish contentId={} durationMs={} errorType={} httpStatus={}",
+                    contentId, elapsedMilliseconds(startedAt), exception.getClass().getSimpleName(),
+                    responseException.getStatusCode().value());
+        } else {
+            log.error("Social platform call failed operation=publish contentId={} durationMs={} errorType={}",
+                    contentId, elapsedMilliseconds(startedAt),
+                    exception.getClass().getSimpleName(), exception);
         }
     }
 
@@ -111,8 +172,8 @@ public class InstagramPlatformClient implements SocialPlatformClient {
     }
 
     private MultiValueMap<String, String> imagePostForm(PublishContentRequest request) {
-        List<PublishMedia> images = mediaOfType(request, com.globalcodelabs.socialmediaplanner.domain.model.MediaType.IMAGE);
-        List<PublishMedia> videos = mediaOfType(request, com.globalcodelabs.socialmediaplanner.domain.model.MediaType.VIDEO);
+        List<PublishMedia> images = mediaOfType(request, com.globalcodelabs.socialmediaplanner.domain.enums.MediaType.IMAGE);
+        List<PublishMedia> videos = mediaOfType(request, com.globalcodelabs.socialmediaplanner.domain.enums.MediaType.VIDEO);
         if (!videos.isEmpty()) {
             throw new IllegalArgumentException("Instagram POST does not support video media");
         }
@@ -126,8 +187,8 @@ public class InstagramPlatformClient implements SocialPlatformClient {
     }
 
     private MultiValueMap<String, String> reelForm(PublishContentRequest request) {
-        List<PublishMedia> images = mediaOfType(request, com.globalcodelabs.socialmediaplanner.domain.model.MediaType.IMAGE);
-        List<PublishMedia> videos = mediaOfType(request, com.globalcodelabs.socialmediaplanner.domain.model.MediaType.VIDEO);
+        List<PublishMedia> images = mediaOfType(request, com.globalcodelabs.socialmediaplanner.domain.enums.MediaType.IMAGE);
+        List<PublishMedia> videos = mediaOfType(request, com.globalcodelabs.socialmediaplanner.domain.enums.MediaType.VIDEO);
         if (videos.size() != 1) {
             throw new IllegalArgumentException("Instagram REEL requires exactly one video");
         }
@@ -168,8 +229,11 @@ public class InstagramPlatformClient implements SocialPlatformClient {
             if ("FINISHED".equals(statusCode)) {
                 return;
             }
-            if ("ERROR".equals(statusCode) || "EXPIRED".equals(statusCode)) {
-                throw new IllegalStateException("Instagram media container processing failed");
+            if ("ERROR".equals(statusCode)) {
+                throw new DefinitivePublishingException("INSTAGRAM_CONTAINER_ERROR");
+            }
+            if ("EXPIRED".equals(statusCode)) {
+                throw new DefinitivePublishingException("INSTAGRAM_CONTAINER_EXPIRED");
             }
             sleep(pollInterval);
         }
@@ -221,7 +285,7 @@ public class InstagramPlatformClient implements SocialPlatformClient {
 
     private static List<PublishMedia> mediaOfType(
             PublishContentRequest request,
-            com.globalcodelabs.socialmediaplanner.domain.model.MediaType mediaType
+            com.globalcodelabs.socialmediaplanner.domain.enums.MediaType mediaType
     ) {
         return request.media().stream()
                 .filter(media -> media.mediaType() == mediaType)

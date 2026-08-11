@@ -1,8 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.publishing;
 
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.SocialPlatformClient;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.SocialPlatformClientResolver;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.mock.MockSocialPlatformClient;
 import org.springframework.stereotype.Component;
 
@@ -12,7 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 
 @Component
-public class SocialPlatformClientFactory implements SocialPlatformClientResolver {
+public class SocialPlatformClientFactory {
 
     private final PublishingProperties properties;
     private final MockSocialPlatformClient mockClient;
@@ -28,7 +26,6 @@ public class SocialPlatformClientFactory implements SocialPlatformClientResolver
         this.realClients = indexRealClients(clients, mockClient);
     }
 
-    @Override
     public SocialPlatformClient resolve(Platform platform) {
         Platform requiredPlatform = Objects.requireNonNull(platform, "Platform cannot be null");
         if (properties.mockModeEnabled()) {

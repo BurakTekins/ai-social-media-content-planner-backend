@@ -2,18 +2,49 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.aimodel;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.globalcodelabs.socialmediaplanner.application.port.out.aimodel.ModelsDevCatalogClient.ModelData;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.infrastructure.aimodel.ModelData;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.RestClient;
 
+import java.io.IOException;
+import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class ModelsDevClientTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void retriesWhenCatalogResponseBodyIsInterrupted() {
+        URI apiUri = URI.create("https://models.dev/api.json");
+        RestClient.Builder restClientBuilder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restClientBuilder).build();
+        server.expect(requestTo(apiUri))
+                .andRespond(withException(new IOException("closed")));
+        server.expect(requestTo(apiUri))
+                .andRespond(withSuccess(validCatalog(), MediaType.APPLICATION_JSON));
+        ModelsDevClient client = new ModelsDevClient(
+                restClientBuilder.build(),
+                apiUri,
+                3,
+                Duration.ZERO
+        );
+
+        List<ModelData> models = client.fetchAll();
+
+        assertThat(models).hasSize(9);
+        server.verify();
+    }
 
     @Test
     void parsesEverySupportedOutputCapabilityForEachModel() throws Exception {

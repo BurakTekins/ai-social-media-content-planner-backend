@@ -1,8 +1,9 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.publishing.media;
 
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishMedia;
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.DocumentStorage;
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishMedia;
+import com.globalcodelabs.socialmediaplanner.infrastructure.storage.LocalDocumentStorage;
+import com.globalcodelabs.socialmediaplanner.infrastructure.storage.StoredMediaContent;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishingProperties;
 import org.springframework.stereotype.Component;
 
@@ -24,11 +25,11 @@ public class MediaContentLoader {
 
     private static final String USER_AGENT = "ai-social-media-content-planner/1.0";
 
-    private final DocumentStorage documentStorage;
+    private final LocalDocumentStorage documentStorage;
     private final PublishingProperties properties;
     private final HttpClient httpClient;
 
-    public MediaContentLoader(DocumentStorage documentStorage, PublishingProperties properties) {
+    public MediaContentLoader(LocalDocumentStorage documentStorage, PublishingProperties properties) {
         this.documentStorage = documentStorage;
         this.properties = properties;
         this.httpClient = HttpClient.newBuilder()
@@ -53,6 +54,11 @@ public class MediaContentLoader {
         }
         URI uri = validatePublicHttpsUrl(sourceUrl);
         return fromRemoteUrl(mediaType, uri);
+    }
+
+    public StoredMediaContent loadGenerated(MediaType mediaType, String sourceUrl) {
+        MediaContent content = load(mediaType, sourceUrl);
+        return new StoredMediaContent(content.contentType(), content.bytes());
     }
 
     private MediaContent fromStorage(PublishMedia media) {

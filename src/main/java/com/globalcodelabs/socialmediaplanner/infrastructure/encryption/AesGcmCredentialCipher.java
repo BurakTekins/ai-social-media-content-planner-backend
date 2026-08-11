@@ -1,6 +1,5 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.encryption;
 
-import com.globalcodelabs.socialmediaplanner.application.port.out.security.CredentialCipher;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -13,7 +12,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 @Component
-public class AesGcmCredentialCipher implements CredentialCipher {
+public class AesGcmCredentialCipher {
 
     private static final String VERSION = "v1";
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
@@ -34,7 +33,6 @@ public class AesGcmCredentialCipher implements CredentialCipher {
         this.secretKey = new SecretKeySpec(key, "AES");
     }
 
-    @Override
     public String encrypt(String plaintext) {
         if (plaintext == null || plaintext.isBlank()) {
             throw new IllegalArgumentException("Credential token cannot be blank");
@@ -52,7 +50,6 @@ public class AesGcmCredentialCipher implements CredentialCipher {
         }
     }
 
-    @Override
     public String decrypt(String ciphertext) {
         if (ciphertext == null || ciphertext.isBlank()) {
             throw new IllegalArgumentException("Encrypted credential token cannot be blank");

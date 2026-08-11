@@ -1,9 +1,9 @@
 package com.globalcodelabs.socialmediaplanner.domain.repository;
 
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
-import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatchStatus;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationBatchStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

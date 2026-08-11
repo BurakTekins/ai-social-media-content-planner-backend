@@ -1,10 +1,10 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.scheduler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.globalcodelabs.socialmediaplanner.application.port.out.aimodel.ModelsDevCatalogClient;
-import com.globalcodelabs.socialmediaplanner.application.port.out.aimodel.ModelsDevCatalogClient.ModelData;
+import com.globalcodelabs.socialmediaplanner.infrastructure.aimodel.ModelData;
+import com.globalcodelabs.socialmediaplanner.infrastructure.aimodel.ModelsDevClient;
 import com.globalcodelabs.socialmediaplanner.application.service.AiModelService;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,7 +25,7 @@ import static org.mockito.Mockito.when;
 class ModelSyncJobTest {
 
     @Mock
-    private ModelsDevCatalogClient modelsDevCatalogClient;
+    private ModelsDevClient modelsDevClient;
 
     @Mock
     private AiModelService aiModelService;
@@ -34,7 +34,7 @@ class ModelSyncJobTest {
 
     @BeforeEach
     void setUp() {
-        modelSyncJob = new ModelSyncJob(modelsDevCatalogClient, aiModelService);
+        modelSyncJob = new ModelSyncJob(modelsDevClient, aiModelService);
     }
 
     @Test
@@ -46,7 +46,7 @@ class ModelSyncJobTest {
                 AiCapability.TEXT,
                 new ObjectMapper().readTree("{}")
         );
-        when(modelsDevCatalogClient.fetchAll()).thenReturn(List.of(model));
+        when(modelsDevClient.fetchAll()).thenReturn(List.of(model));
         when(aiModelService.synchronize(eq(List.of(model)), any())).thenReturn(1);
 
         modelSyncJob.run(null);
@@ -57,7 +57,7 @@ class ModelSyncJobTest {
 
     @Test
     void fetchFailureDoesNotCallServiceAndDoesNotEscapeJob() {
-        when(modelsDevCatalogClient.fetchAll())
+        when(modelsDevClient.fetchAll())
                 .thenThrow(new IllegalStateException("models.dev is unavailable"));
 
         modelSyncJob.synchronizeDaily();

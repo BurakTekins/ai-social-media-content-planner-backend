@@ -86,6 +86,12 @@ public class PublishingProperties {
         @NotNull
         private Duration fixedDelay = Duration.ofSeconds(30);
 
+        @NotNull
+        private Duration confirmationInterval = Duration.ofSeconds(30);
+
+        @NotNull
+        private Duration confirmationTimeout = Duration.ofMinutes(15);
+
         @Min(1)
         private int maxItemsPerRun = 20;
     }

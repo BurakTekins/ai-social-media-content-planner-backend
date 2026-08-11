@@ -1,9 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.storage;
 
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.MediaStorage;
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.StoredMedia;
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.StoredMediaContent;
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -20,7 +17,7 @@ import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
-public class LocalMediaStorage implements MediaStorage {
+public class LocalMediaStorage {
 
     private static final String MEDIA_DIRECTORY_NAME = "media";
     private static final String MEDIA_KEY_PREFIX = MEDIA_DIRECTORY_NAME + "/";
@@ -49,7 +46,6 @@ public class LocalMediaStorage implements MediaStorage {
         }
     }
 
-    @Override
     public StoredMedia store(MediaType mediaType, String declaredContentType, byte[] content) {
         Objects.requireNonNull(mediaType, "Media type cannot be null");
         if (content == null || content.length == 0) {
@@ -70,7 +66,6 @@ public class LocalMediaStorage implements MediaStorage {
         }
     }
 
-    @Override
     public StoredMediaContent read(String storageKey) {
         Path target = resolveOwnedStorageKey(storageKey);
         if (Files.isSymbolicLink(target)) {
@@ -85,7 +80,6 @@ public class LocalMediaStorage implements MediaStorage {
         }
     }
 
-    @Override
     public void delete(String storageKey) {
         Path target = resolveOwnedStorageKeyOrNull(storageKey);
         if (target == null) {

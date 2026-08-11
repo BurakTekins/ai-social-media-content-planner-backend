@@ -1,7 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.response;
 
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 
 import java.util.List;
 

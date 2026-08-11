@@ -1,5 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.domain.model;
 
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -8,7 +9,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
 
 import java.time.OffsetDateTime;
 import java.util.Objects;
@@ -17,6 +20,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "publish_attempt")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter
+@Accessors(fluent = true)
 public class PublishAttempt {
 
     @Id
@@ -24,6 +29,7 @@ public class PublishAttempt {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "content_id", nullable = false)
+    @Getter(AccessLevel.NONE)
     private Content content;
 
     @Column(name = "attempted_at", nullable = false)
@@ -70,28 +76,12 @@ public class PublishAttempt {
         );
     }
 
-    public UUID id() {
-        return id;
-    }
-
     public UUID contentId() {
         return content.id();
     }
 
-    public OffsetDateTime attemptedAt() {
-        return attemptedAt;
-    }
-
-    public boolean success() {
-        return success;
-    }
-
-    public String errorMessage() {
-        return errorMessage;
-    }
-
-    public String externalPostId() {
-        return externalPostId;
+    public Platform platform() {
+        return content.platform();
     }
 
     private static String requireValue(String value, String message) {

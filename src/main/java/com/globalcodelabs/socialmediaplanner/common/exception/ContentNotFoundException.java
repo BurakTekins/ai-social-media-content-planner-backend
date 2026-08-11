@@ -1,14 +1,10 @@
 package com.globalcodelabs.socialmediaplanner.common.exception;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ResponseStatus;
-
 import java.util.UUID;
 
-@ResponseStatus(HttpStatus.NOT_FOUND)
-public class ContentNotFoundException extends RuntimeException {
+public class ContentNotFoundException extends ApplicationException {
 
     public ContentNotFoundException(UUID contentId) {
-        super("Content not found: " + contentId);
+        super(ErrorCode.CONTENT_NOT_FOUND, "Content not found: " + contentId);
     }
 }

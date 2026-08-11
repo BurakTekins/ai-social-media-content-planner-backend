@@ -2,15 +2,15 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.publishing.provider
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PlatformCredential;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentRequest;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentResult;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishMedia;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.SocialPlatformClient;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PlatformCredential;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentRequest;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentResult;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishMedia;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClient;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishingProperties;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.config.PublishingRestClientFactory;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.media.MediaContent;
@@ -22,11 +22,13 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 @Slf4j
 @Component
@@ -67,21 +69,72 @@ public class TwitterPlatformClient implements SocialPlatformClient {
             );
             return new PublishContentResult(externalPostId);
         } catch (RestClientException exception) {
-            log.error(
-                    "Social platform call failed operation=publish contentId={} durationMs={} errorType={}",
-                    request.contentId(), elapsedMilliseconds(startedAt),
-                    exception.getClass().getSimpleName(), exception
-            );
+            logPublishFailure(request.contentId(), startedAt, exception);
             throw new IllegalStateException("X API request failed", exception);
         } catch (RuntimeException exception) {
             log.error(
                     "Social platform call failed operation=publish contentId={} durationMs={} errorType={}",
                     request.contentId(), elapsedMilliseconds(startedAt),
-                    exception.getClass().getSimpleName(), exception
+                    exception.getClass().getSimpleName(),
+                    exception
             );
             throw exception;
         } finally {
             MdcUtil.removeProvider();
+        }
+    }
+
+    @Override
+    public boolean isPublished(String externalPostId, PlatformCredential credential) {
+        String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
+        long startedAt = System.nanoTime();
+        try {
+            log.info("Social platform call started operation=verify-publication externalPostId={}", externalPostId);
+            TweetResponse response = restClientFactory.forBaseUrl(baseUrl)
+                    .get()
+                    .uri(restClientFactory.endpoint(baseUrl, "2/tweets/" + externalPostId))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                    .retrieve()
+                    .body(TweetResponse.class);
+            boolean published = response != null
+                    && response.data() != null
+                    && externalPostId.equals(response.data().id());
+            log.info("Social platform call completed operation=verify-publication externalPostId={} published={} durationMs={}",
+                    externalPostId, published, elapsedMilliseconds(startedAt));
+            return published;
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == 404) {
+                log.info("Social platform call completed operation=verify-publication externalPostId={} published=false httpStatus=404 durationMs={}",
+                        externalPostId, elapsedMilliseconds(startedAt));
+                return false;
+            }
+            if (exception.getStatusCode().is4xxClientError()) {
+                log.warn("Social platform call rejected operation=verify-publication externalPostId={} httpStatus={} durationMs={}",
+                        externalPostId, exception.getStatusCode().value(), elapsedMilliseconds(startedAt));
+            } else {
+                log.error("Social platform call failed operation=verify-publication externalPostId={} httpStatus={} durationMs={}",
+                        externalPostId, exception.getStatusCode().value(),
+                        elapsedMilliseconds(startedAt), exception);
+            }
+            throw exception;
+        } catch (RuntimeException exception) {
+            log.error("Social platform call failed operation=verify-publication externalPostId={} errorType={} durationMs={}",
+                    externalPostId, exception.getClass().getSimpleName(),
+                    elapsedMilliseconds(startedAt), exception);
+            throw exception;
+        }
+    }
+
+    private static void logPublishFailure(UUID contentId, long startedAt, RestClientException exception) {
+        if (exception instanceof RestClientResponseException responseException
+                && responseException.getStatusCode().is4xxClientError()) {
+            log.warn("Social platform call rejected operation=publish contentId={} durationMs={} errorType={} httpStatus={}",
+                    contentId, elapsedMilliseconds(startedAt), exception.getClass().getSimpleName(),
+                    responseException.getStatusCode().value());
+        } else {
+            log.error("Social platform call failed operation=publish contentId={} durationMs={} errorType={}",
+                    contentId, elapsedMilliseconds(startedAt),
+                    exception.getClass().getSimpleName(), exception);
         }
     }
 
@@ -313,7 +366,7 @@ public class TwitterPlatformClient implements SocialPlatformClient {
 
     private static List<PublishMedia> mediaOfType(
             PublishContentRequest request,
-            com.globalcodelabs.socialmediaplanner.domain.model.MediaType mediaType
+            com.globalcodelabs.socialmediaplanner.domain.enums.MediaType mediaType
     ) {
         return request.media().stream()
                 .filter(media -> media.mediaType() == mediaType)

@@ -1,6 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.domain.repository;
 
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiModelCache;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -8,11 +8,18 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface AiModelCacheRepository extends JpaRepository<AiModelCache, UUID> {
 
     List<AiModelCache> findAllByProviderNameIn(Collection<String> providerNames);
+
+    Optional<AiModelCache> findByProviderNameAndModelIdAndCapability(
+            String providerName,
+            String modelId,
+            AiCapability capability
+    );
 
     @Query("""
             SELECT model

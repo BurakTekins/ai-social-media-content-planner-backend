@@ -2,15 +2,16 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.publishing.provider
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PlatformCredential;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentRequest;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishContentResult;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.PublishMedia;
-import com.globalcodelabs.socialmediaplanner.application.port.out.publishing.SocialPlatformClient;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PlatformCredential;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.DefinitivePublishingException;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentRequest;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishContentResult;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishMedia;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.SocialPlatformClient;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentType;
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishingProperties;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.config.PublishingRestClientFactory;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.media.MediaContent;
@@ -22,6 +23,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriUtils;
 
 import java.net.URI;
@@ -30,6 +32,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Component
@@ -38,6 +42,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
 
     private static final String PROVIDER_NAME = "linkedin";
     private static final String RESTLI_PROTOCOL_VERSION = "2.0.0";
+    private static final Pattern API_VERSION_PATTERN = Pattern.compile("\\d{6}");
 
     private final PublishingProperties properties;
     private final PublishingRestClientFactory restClientFactory;
@@ -53,7 +58,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
         validateRequest(request);
         PublishingProperties.Provider provider = properties.requireProvider(PROVIDER_NAME);
         String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
-        String version = properties.requireVersion(PROVIDER_NAME);
+        String version = requireApiVersion(properties.requireVersion(PROVIDER_NAME));
         String owner = requireOwner(request.credential());
         long startedAt = System.nanoTime();
         MdcUtil.putProvider(PROVIDER_NAME);
@@ -67,21 +72,51 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
             );
             return new PublishContentResult(externalPostId);
         } catch (RestClientException exception) {
-            log.error(
-                    "Social platform call failed operation=publish contentId={} durationMs={} errorType={}",
-                    request.contentId(), elapsedMilliseconds(startedAt),
-                    exception.getClass().getSimpleName(), exception
-            );
+            logPublishFailure(request.contentId(), startedAt, exception);
             throw new IllegalStateException("LinkedIn API request failed", exception);
+        } catch (DefinitivePublishingException exception) {
+            log.warn(
+                    "Social platform call rejected operation=publish contentId={} durationMs={} providerCode={}",
+                    request.contentId(), elapsedMilliseconds(startedAt), exception.providerCode()
+            );
+            throw exception;
         } catch (RuntimeException exception) {
             log.error(
                     "Social platform call failed operation=publish contentId={} durationMs={} errorType={}",
                     request.contentId(), elapsedMilliseconds(startedAt),
-                    exception.getClass().getSimpleName(), exception
+                    exception.getClass().getSimpleName(),
+                    exception
             );
             throw exception;
         } finally {
             MdcUtil.removeProvider();
+        }
+    }
+
+    @Override
+    public boolean isPublished(String externalPostId, PlatformCredential credential) {
+        if (externalPostId == null
+                || (!externalPostId.startsWith("urn:li:share:")
+                && !externalPostId.startsWith("urn:li:ugcPost:"))) {
+            throw new IllegalArgumentException("LinkedIn post id is invalid");
+        }
+        log.debug(
+                "LinkedIn publication accepted from create response externalPostId={}",
+                externalPostId
+        );
+        return true;
+    }
+
+    private static void logPublishFailure(UUID contentId, long startedAt, RestClientException exception) {
+        if (exception instanceof RestClientResponseException responseException
+                && responseException.getStatusCode().is4xxClientError()) {
+            log.warn("Social platform call rejected operation=publish contentId={} durationMs={} errorType={} httpStatus={}",
+                    contentId, elapsedMilliseconds(startedAt), exception.getClass().getSimpleName(),
+                    responseException.getStatusCode().value());
+        } else {
+            log.error("Social platform call failed operation=publish contentId={} durationMs={} errorType={}",
+                    contentId, elapsedMilliseconds(startedAt),
+                    exception.getClass().getSimpleName(), exception);
         }
     }
 
@@ -101,7 +136,9 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
             throw new IllegalArgumentException("LinkedIn publishing supports at most one media item");
         }
         if (!images.isEmpty()) {
-            return uploadImage(images.getFirst(), request.credential(), baseUrl, version, owner);
+            return uploadImage(
+                    images.getFirst(), request.credential(), baseUrl, version, owner, provider
+            );
         }
         if (!videos.isEmpty()) {
             return uploadVideo(videos.getFirst(), request.credential(), baseUrl, version, owner, provider);
@@ -114,11 +151,12 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
             PlatformCredential credential,
             String baseUrl,
             String version,
-            String owner
+            String owner,
+            PublishingProperties.Provider provider
     ) {
         ImageInitializeResponse response = restClientFactory.forBaseUrl(baseUrl)
                 .post()
-                .uri(restClientFactory.endpoint(baseUrl, "rest/images?action=initializeUpload"))
+                .uri(restClientFactory.endpoint(baseUrl, LinkedInApiPaths.INITIALIZE_IMAGE_UPLOAD))
                 .header(HttpHeaders.AUTHORIZATION, bearer(credential))
                 .header("Linkedin-Version", version)
                 .header("X-Restli-Protocol-Version", RESTLI_PROTOCOL_VERSION)
@@ -137,8 +175,16 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientException exception) {
-            throw new IllegalStateException("LinkedIn image upload failed");
+            throw new IllegalStateException("LinkedIn image upload failed", exception);
         }
+        waitUntilAvailable(
+                baseUrl,
+                version,
+                credential,
+                LinkedInApiPaths.imageStatus(encodedUrn(value.image())),
+                provider.getPollInterval(),
+                provider.getPollTimeout()
+        );
         return value.image();
     }
 
@@ -154,7 +200,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
         byte[] videoBytes = content.bytes();
         VideoInitializeResponse response = restClientFactory.forBaseUrl(baseUrl)
                 .post()
-                .uri(restClientFactory.endpoint(baseUrl, "rest/videos?action=initializeUpload"))
+                .uri(restClientFactory.endpoint(baseUrl, LinkedInApiPaths.INITIALIZE_VIDEO_UPLOAD))
                 .header(HttpHeaders.AUTHORIZATION, bearer(credential))
                 .header("Linkedin-Version", version)
                 .header("X-Restli-Protocol-Version", RESTLI_PROTOCOL_VERSION)
@@ -167,7 +213,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
         List<String> uploadedPartIds = uploadVideoParts(value.uploadInstructions(), videoBytes);
         restClientFactory.forBaseUrl(baseUrl)
                 .post()
-                .uri(restClientFactory.endpoint(baseUrl, "rest/videos?action=finalizeUpload"))
+                .uri(restClientFactory.endpoint(baseUrl, LinkedInApiPaths.FINALIZE_VIDEO_UPLOAD))
                 .header(HttpHeaders.AUTHORIZATION, bearer(credential))
                 .header("Linkedin-Version", version)
                 .header("X-Restli-Protocol-Version", RESTLI_PROTOCOL_VERSION)
@@ -177,7 +223,10 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
                 .retrieve()
                 .toBodilessEntity();
         waitUntilAvailable(
-                baseUrl, version, credential, "videos", value.video(),
+                baseUrl,
+                version,
+                credential,
+                LinkedInApiPaths.videoStatus(encodedUrn(value.video())),
                 provider.getPollInterval(), provider.getPollTimeout()
         );
         return value.video();
@@ -214,7 +263,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
                         .retrieve()
                         .toBodilessEntity();
             } catch (RestClientException exception) {
-                throw new IllegalStateException("LinkedIn video part upload failed");
+                throw new IllegalStateException("LinkedIn video part upload failed", exception);
             }
             String etag = response.getHeaders().getFirst(HttpHeaders.ETAG);
             if (etag == null || etag.isBlank()) {
@@ -229,17 +278,15 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
             String baseUrl,
             String version,
             PlatformCredential credential,
-            String resource,
-            String mediaUrn,
+            String statusPath,
             Duration pollInterval,
             Duration pollTimeout
     ) {
         long deadline = System.nanoTime() + pollTimeout.toNanos();
-        String encodedUrn = UriUtils.encodePathSegment(mediaUrn, StandardCharsets.UTF_8);
         while (System.nanoTime() < deadline) {
             MediaStatusResponse response = restClientFactory.forBaseUrl(baseUrl)
                     .get()
-                    .uri(restClientFactory.endpoint(baseUrl, "rest/" + resource + "/" + encodedUrn))
+                    .uri(restClientFactory.endpoint(baseUrl, statusPath))
                     .header(HttpHeaders.AUTHORIZATION, bearer(credential))
                     .header("Linkedin-Version", version)
                     .header("X-Restli-Protocol-Version", RESTLI_PROTOCOL_VERSION)
@@ -250,7 +297,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
                 return;
             }
             if ("PROCESSING_FAILED".equals(status)) {
-                throw new IllegalStateException("LinkedIn media processing failed");
+                throw new DefinitivePublishingException("LINKEDIN_MEDIA_PROCESSING_FAILED");
             }
             sleep(pollInterval);
         }
@@ -267,7 +314,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
         PostContent content = mediaUrn == null ? null : new PostContent(new PostMedia(mediaUrn));
         ResponseEntity<Void> response = restClientFactory.forBaseUrl(baseUrl)
                 .post()
-                .uri(restClientFactory.endpoint(baseUrl, "rest/posts"))
+                .uri(restClientFactory.endpoint(baseUrl, LinkedInApiPaths.POSTS))
                 .header(HttpHeaders.AUTHORIZATION, bearer(request.credential()))
                 .header("Linkedin-Version", version)
                 .header("X-Restli-Protocol-Version", RESTLI_PROTOCOL_VERSION)
@@ -359,6 +406,17 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
 
     private static String bearer(PlatformCredential credential) {
         return "Bearer " + credential.accessToken();
+    }
+
+    private static String requireApiVersion(String version) {
+        if (!API_VERSION_PATTERN.matcher(version).matches()) {
+            throw new IllegalStateException("LinkedIn API version must use YYYYMM format");
+        }
+        return version;
+    }
+
+    private static String encodedUrn(String urn) {
+        return UriUtils.encodePathSegment(urn, StandardCharsets.UTF_8);
     }
 
     private static String stripQuotes(String value) {

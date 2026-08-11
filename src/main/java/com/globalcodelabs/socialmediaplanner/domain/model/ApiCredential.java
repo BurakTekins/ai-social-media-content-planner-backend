@@ -1,6 +1,9 @@
 package com.globalcodelabs.socialmediaplanner.domain.model;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialValidationStatus;
+import com.globalcodelabs.socialmediaplanner.domain.policy.DomainValidation;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -8,15 +11,23 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
 @Table(name = "api_credential")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter
+@Accessors(fluent = true)
 public class ApiCredential {
 
     @Id
@@ -29,8 +40,20 @@ public class ApiCredential {
     @Column(name = "provider_name", nullable = false, updatable = false)
     private String providerName;
 
+    @Column(name = "owner_id")
+    @Getter(AccessLevel.NONE)
+    private UUID ownerId;
+
     @Column(name = "account_identifier", columnDefinition = "TEXT")
     private String accountIdentifier;
+
+    @Column(name = "account_display_name")
+    private String accountDisplayName;
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "granted_scopes", nullable = false, columnDefinition = "TEXT[]")
+    @Getter(AccessLevel.NONE)
+    private String[] grantedScopes;
 
     @Column(name = "encrypted_access_token", nullable = false, columnDefinition = "TEXT")
     private String encryptedAccessToken;
@@ -40,6 +63,19 @@ public class ApiCredential {
 
     @Column(name = "expires_at")
     private OffsetDateTime expiresAt;
+
+    @Column(name = "refresh_token_expires_at")
+    private OffsetDateTime refreshTokenExpiresAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "validation_status", nullable = false, length = 20)
+    private CredentialValidationStatus validationStatus;
+
+    @Column(name = "last_validated_at")
+    private OffsetDateTime lastValidatedAt;
+
+    @Column(name = "validation_error", columnDefinition = "TEXT")
+    private String validationError;
 
     @Column(name = "is_active", nullable = false)
     private boolean active;
@@ -69,6 +105,8 @@ public class ApiCredential {
         );
         this.encryptedRefreshToken = optionalEncryptedToken(encryptedRefreshToken);
         this.expiresAt = expiresAt;
+        this.grantedScopes = new String[0];
+        this.validationStatus = CredentialValidationStatus.UNVERIFIED;
         this.active = true;
         this.createdAt = now;
         this.updatedAt = now;
@@ -98,12 +136,61 @@ public class ApiCredential {
         );
         this.encryptedRefreshToken = optionalEncryptedToken(encryptedRefreshToken);
         this.expiresAt = expiresAt;
+        this.validationStatus = CredentialValidationStatus.UNVERIFIED;
+        this.lastValidatedAt = null;
+        this.validationError = null;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void refreshTokens(
+            String encryptedAccessToken,
+            String encryptedRefreshToken,
+            OffsetDateTime expiresAt,
+            OffsetDateTime refreshTokenExpiresAt
+    ) {
+        this.encryptedAccessToken = requireEncryptedToken(
+                encryptedAccessToken, "Encrypted access token cannot be blank"
+        );
+        if (encryptedRefreshToken != null) {
+            this.encryptedRefreshToken = optionalEncryptedToken(encryptedRefreshToken);
+        }
+        this.expiresAt = expiresAt;
+        if (refreshTokenExpiresAt != null) {
+            this.refreshTokenExpiresAt = refreshTokenExpiresAt;
+        }
+        this.validationStatus = CredentialValidationStatus.VALID;
+        this.validationError = null;
         this.updatedAt = OffsetDateTime.now();
     }
 
     public void updateAccountIdentifier(String accountIdentifier) {
         this.accountIdentifier = validateAccountIdentifier(providerName, accountIdentifier);
         this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void markValidated(
+            String accountDisplayName,
+            Set<String> grantedScopes,
+            OffsetDateTime refreshTokenExpiresAt
+    ) {
+        this.accountDisplayName = optionalText(accountDisplayName);
+        this.grantedScopes = normalizeScopes(grantedScopes);
+        this.refreshTokenExpiresAt = refreshTokenExpiresAt;
+        this.validationStatus = CredentialValidationStatus.VALID;
+        this.lastValidatedAt = OffsetDateTime.now();
+        this.validationError = null;
+        this.active = true;
+        this.updatedAt = this.lastValidatedAt;
+    }
+
+    public void markValidationFailed(String validationError) {
+        this.validationStatus = CredentialValidationStatus.INVALID;
+        this.lastValidatedAt = OffsetDateTime.now();
+        this.validationError = DomainValidation.requireText(
+                validationError,
+                "Validation error cannot be blank"
+        );
+        this.updatedAt = this.lastValidatedAt;
     }
 
     public void changeActive(boolean active) {
@@ -114,52 +201,16 @@ public class ApiCredential {
         this.updatedAt = OffsetDateTime.now();
     }
 
-    public UUID id() {
-        return id;
-    }
-
-    public CredentialType credentialType() {
-        return credentialType;
-    }
-
-    public String providerName() {
-        return providerName;
-    }
-
-    public String accountIdentifier() {
-        return accountIdentifier;
-    }
-
-    public String encryptedAccessToken() {
-        return encryptedAccessToken;
-    }
-
-    public String encryptedRefreshToken() {
-        return encryptedRefreshToken;
+    public Set<String> grantedScopes() {
+        return Set.copyOf(Arrays.asList(grantedScopes));
     }
 
     public boolean hasRefreshToken() {
         return encryptedRefreshToken != null;
     }
 
-    public OffsetDateTime expiresAt() {
-        return expiresAt;
-    }
-
-    public boolean active() {
-        return active;
-    }
-
     public boolean expiredAt(OffsetDateTime time) {
         return expiresAt != null && !expiresAt.isAfter(time);
-    }
-
-    public OffsetDateTime createdAt() {
-        return createdAt;
-    }
-
-    public OffsetDateTime updatedAt() {
-        return updatedAt;
     }
 
     private static String normalizeProviderName(String providerName) {
@@ -225,6 +276,27 @@ public class ApiCredential {
         if (accountIdentifier.isBlank()) {
             throw new DomainException("Account identifier cannot be blank");
         }
-        return accountIdentifier.trim();
+        String normalized = accountIdentifier.trim();
+        if (providerName.equals("twitter") && !normalized.matches("\\d+")) {
+            throw new DomainException("X account identifier must be a numeric user id");
+        }
+        return normalized;
+    }
+
+    private static String[] normalizeScopes(Set<String> scopes) {
+        if (scopes == null || scopes.isEmpty()) {
+            return new String[0];
+        }
+        return scopes.stream()
+                .map(scope -> DomainValidation.requireText(scope, "Granted scope cannot be blank"))
+                .distinct()
+                .sorted()
+                .toArray(String[]::new);
+    }
+
+    private static String optionalText(String value) {
+        return value == null
+                ? null
+                : DomainValidation.requireText(value, "Text value cannot be blank");
     }
 }

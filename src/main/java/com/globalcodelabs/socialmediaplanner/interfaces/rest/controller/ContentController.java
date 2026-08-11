@@ -1,14 +1,16 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.controller;
 
 import com.globalcodelabs.socialmediaplanner.application.command.UploadedMedia;
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.StoredMediaContent;
+import com.globalcodelabs.socialmediaplanner.infrastructure.storage.StoredMediaContent;
 import com.globalcodelabs.socialmediaplanner.application.service.ContentService;
+import com.globalcodelabs.socialmediaplanner.application.service.DraftRegenerationService;
 import com.globalcodelabs.socialmediaplanner.application.service.PublishingService;
 import com.globalcodelabs.socialmediaplanner.domain.model.Content;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentStatus;
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.CreateContentRequest;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.AiModelSelectionRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.ScheduleContentRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.UpdateDraftContentRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.ContentPageResponse;
@@ -17,6 +19,7 @@ import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.PublishAtt
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -53,13 +56,15 @@ import java.util.UUID;
 public class ContentController {
 
     private final ContentService contentService;
+    private final DraftRegenerationService draftRegenerationService;
     private final PublishingService publishingService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ContentResponse create(@Valid @RequestBody CreateContentRequest request) {
         Content content = Content.create(
-                request.platform(), request.contentType(), request.text(), request.hashtags(), request.batchId()
+                request.title(), request.platform(), request.contentType(), request.text(),
+                request.hashtags(), request.batchId()
         );
         if (request.media() != null) {
             request.media().forEach(media -> content.addMedia(
@@ -75,11 +80,16 @@ public class ContentController {
             @RequestParam(required = false) ContentStatus status,
             @RequestParam(required = false) Platform platform,
             @RequestParam(required = false) UUID batchId,
+            @RequestParam(required = false) @Size(max = 255) String title,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        return ContentPageResponse.from(contentService.findAll(status, platform, batchId, pageRequest));
+        PageRequest pageRequest = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))
+        );
+        return ContentPageResponse.from(contentService.findAll(status, platform, batchId, title, pageRequest));
     }
 
     @GetMapping("/calendar")
@@ -114,7 +124,37 @@ public class ContentController {
             @Valid @RequestBody UpdateDraftContentRequest request
     ) {
         return ContentResponse.from(
-                contentService.updateDraft(contentId, request.text(), request.hashtags())
+                contentService.updateDraft(contentId, request.title(), request.text(), request.hashtags())
+        );
+    }
+
+    @PostMapping("/{contentId}/regenerate/text")
+    public ContentResponse regenerateText(
+            @PathVariable UUID contentId,
+            @Valid @RequestBody AiModelSelectionRequest request
+    ) {
+        return ContentResponse.from(
+                draftRegenerationService.regenerateText(
+                        contentId,
+                        request.provider(),
+                        request.model()
+                )
+        );
+    }
+
+    @PostMapping("/{contentId}/regenerate/media/{mediaType}")
+    public ContentResponse regenerateMedia(
+            @PathVariable UUID contentId,
+            @PathVariable MediaType mediaType,
+            @Valid @RequestBody AiModelSelectionRequest request
+    ) {
+        return ContentResponse.from(
+                draftRegenerationService.regenerateMedia(
+                        contentId,
+                        mediaType,
+                        request.provider(),
+                        request.model()
+                )
         );
     }
 
