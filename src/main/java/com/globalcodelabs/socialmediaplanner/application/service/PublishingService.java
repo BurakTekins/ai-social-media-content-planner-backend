@@ -183,7 +183,7 @@ public class PublishingService {
                 return;
             }
             confirm(new PendingConfirmation(
-                    publication.contentId(), publication.platform(), result.externalPostId()
+                    publication.contentId(), publication.platform(), externalPostId
             ));
         } finally {
             MdcUtil.removeProvider();
