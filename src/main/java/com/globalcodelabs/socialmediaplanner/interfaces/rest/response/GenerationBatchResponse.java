@@ -30,6 +30,7 @@ public record GenerationBatchResponse(
         String imageModel,
         String videoProvider,
         String videoModel,
+        Integer videoDurationSeconds,
         GenerationStrategy generationStrategy,
         String strategySelectionReason,
         String strategyWarning,
@@ -48,6 +49,7 @@ public record GenerationBatchResponse(
                 batch.lastRetryAt(),
                 batch.includeImage(), batch.includeVideo(), batch.textProvider(), batch.textModel(),
                 batch.imageProvider(), batch.imageModel(), batch.videoProvider(), batch.videoModel(),
+                batch.videoDurationSeconds(),
                 batch.generationStrategy(), batch.strategySelectionReason(), batch.strategyWarning(),
                 batch.sources().stream().map(ContentSourceResponse::from).toList(),
                 batch.createdAt(), batch.updatedAt()

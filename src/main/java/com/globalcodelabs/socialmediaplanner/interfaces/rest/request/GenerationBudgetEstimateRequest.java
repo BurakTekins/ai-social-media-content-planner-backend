@@ -8,6 +8,9 @@ public record GenerationBudgetEstimateRequest(
         @Min(1) int requestedCount,
         boolean includeImage,
         boolean includeVideo,
-        @Valid @NotNull AiModelSelectionRequest textModel
+        @Valid @NotNull AiModelSelectionRequest textModel,
+        @Valid AiModelSelectionRequest imageModel,
+        @Valid AiModelSelectionRequest videoModel,
+        @Min(1) Integer videoDurationSeconds
 ) {
 }

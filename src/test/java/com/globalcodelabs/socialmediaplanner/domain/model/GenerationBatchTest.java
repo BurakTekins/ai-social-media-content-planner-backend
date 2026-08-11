@@ -285,6 +285,38 @@ class GenerationBatchTest {
         assertThat(batch.imageModel()).isEqualTo("image-model");
         assertThat(batch.videoProvider()).isEqualTo("qwen");
         assertThat(batch.videoModel()).isEqualTo("video-model");
+        assertThat(batch.videoDurationSeconds()).isEqualTo(8);
+    }
+
+    @Test
+    void requiresVideoDurationOnlyWhenVideoGenerationIsEnabled() {
+        assertThatThrownBy(() -> GenerationBatch.create(
+                "Video batch",
+                Platform.LINKEDIN,
+                ContentType.POST,
+                1,
+                AiModelSelection.required("openai", "text-model", "Text"),
+                null,
+                AiModelSelection.required("gemini", "veo-3.1", "video"),
+                null,
+                null,
+                1
+        )).isInstanceOf(DomainException.class)
+                .hasMessageContaining("Video duration is required");
+
+        assertThatThrownBy(() -> GenerationBatch.create(
+                "Text batch",
+                Platform.LINKEDIN,
+                ContentType.POST,
+                1,
+                AiModelSelection.required("openai", "text-model", "Text"),
+                null,
+                null,
+                8,
+                null,
+                1
+        )).isInstanceOf(DomainException.class)
+                .hasMessageContaining("Video duration must be empty");
     }
 
     @Test
@@ -342,7 +374,9 @@ class GenerationBatchTest {
                 AiModelSelection.required(textProvider, textModel, "Text"),
                 AiModelSelection.optional(includeImage, imageProvider, imageModel, "image"),
                 AiModelSelection.optional(includeVideo, videoProvider, videoModel, "video"),
-                null, 1
+                includeVideo ? 8 : null,
+                null,
+                1
         );
     }
 
@@ -354,6 +388,7 @@ class GenerationBatchTest {
         return GenerationBatch.create(
                 "Test batch", Platform.LINKEDIN, ContentType.POST, requestedCount,
                 AiModelSelection.required("openai", "text-model", "Text"),
+                null,
                 null,
                 null,
                 strategy, sourceCount

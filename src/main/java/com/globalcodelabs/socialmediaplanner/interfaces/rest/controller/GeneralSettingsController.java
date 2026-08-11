@@ -31,7 +31,13 @@ public class GeneralSettingsController {
         GeneralSettings settings = new GeneralSettings(
                 Duration.ofSeconds(request.publicationConfirmationTimeoutSeconds()),
                 Duration.ofSeconds(request.publicationConfirmationIntervalSeconds()),
-                request.publishingMaxItemsPerRun()
+                request.publishingMaxItemsPerRun(),
+                request.generationMaxContentsPerBatch(),
+                request.generationMaxImagesPerBatch(),
+                request.generationMaxVideosPerBatch(),
+                request.generationMaxEstimatedCostUsd(),
+                request.generationEstimatedInputTokensPerItem(),
+                request.generationEstimatedOutputTokensPerItem()
         );
         return GeneralSettingsResponse.from(generalSettingsService.update(settings));
     }

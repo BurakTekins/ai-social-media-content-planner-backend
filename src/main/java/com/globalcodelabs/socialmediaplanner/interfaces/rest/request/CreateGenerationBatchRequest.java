@@ -21,6 +21,7 @@ public record CreateGenerationBatchRequest(
         @NotNull @Valid AiModelSelectionRequest textModel,
         @Valid AiModelSelectionRequest imageModel,
         @Valid AiModelSelectionRequest videoModel,
+        @Min(1) Integer videoDurationSeconds,
         GenerationStrategy generationStrategy,
         List<@NotBlank String> links
 ) {

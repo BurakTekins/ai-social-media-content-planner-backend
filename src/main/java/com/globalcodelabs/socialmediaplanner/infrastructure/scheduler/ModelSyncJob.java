@@ -2,6 +2,8 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.scheduler;
 
 import com.globalcodelabs.socialmediaplanner.application.service.AiModelService;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
+import com.globalcodelabs.socialmediaplanner.infrastructure.aimodel.ModelData;
 import com.globalcodelabs.socialmediaplanner.infrastructure.aimodel.ModelsDevClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +13,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -46,6 +51,7 @@ public class ModelSyncJob implements ApplicationRunner {
 
         try {
             var models = modelsDevClient.fetchAll();
+            logPricingCoverage(models);
             modelCount = aiModelService.synchronize(models, OffsetDateTime.now());
             successful = true;
         } catch (RuntimeException exception) {
@@ -60,6 +66,44 @@ public class ModelSyncJob implements ApplicationRunner {
                     durationMs
             );
             MdcUtil.clear();
+        }
+    }
+
+    private void logPricingCoverage(List<ModelData> models) {
+        Map<AiCapability, PricingCoverage> coverage = new EnumMap<>(AiCapability.class);
+        for (AiCapability capability : AiCapability.values()) {
+            coverage.put(capability, new PricingCoverage());
+        }
+        for (ModelData model : models) {
+            var cost = model.rawMetadata().path("cost");
+            boolean priced = cost.path("input").isNumber()
+                    && cost.path("output").isNumber()
+                    && cost.path("input").decimalValue().signum() >= 0
+                    && cost.path("output").decimalValue().signum() >= 0;
+            coverage.get(model.capability()).record(priced);
+        }
+        log.info(
+                "models.dev pricing coverage textPriced={} textFallback={} imagePriced={} "
+                        + "imageFallback={} videoPriced={} videoFallback={}",
+                coverage.get(AiCapability.TEXT).priced,
+                coverage.get(AiCapability.TEXT).fallback,
+                coverage.get(AiCapability.IMAGE).priced,
+                coverage.get(AiCapability.IMAGE).fallback,
+                coverage.get(AiCapability.VIDEO).priced,
+                coverage.get(AiCapability.VIDEO).fallback
+        );
+    }
+
+    private static final class PricingCoverage {
+        private int priced;
+        private int fallback;
+
+        private void record(boolean hasPricing) {
+            if (hasPricing) {
+                priced++;
+            } else {
+                fallback++;
+            }
         }
     }
 }

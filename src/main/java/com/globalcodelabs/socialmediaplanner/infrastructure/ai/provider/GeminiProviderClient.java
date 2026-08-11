@@ -2,28 +2,48 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.ai.provider;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationRequest;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationResult;
 import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialService;
 import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponseException;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiRestClientFactory;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.AiGeneratedVideoDownloader;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.RecoverableVideoProviderClient;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoArtifactExpiredException;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoModelRegistry;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoProviderTaskFailedException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
 @Component
-public class GeminiProviderClient extends AbstractAiProviderClient {
+public class GeminiProviderClient extends AbstractAiProviderClient implements RecoverableVideoProviderClient {
 
     private static final String PROVIDER_NAME = "gemini";
     private static final Pattern MODEL_ID = Pattern.compile("[A-Za-z0-9._-]+");
+    private static final Set<String> VIDEO_DOWNLOAD_HOSTS = Set.of(
+            "googleapis.com",
+            "googleusercontent.com"
+    );
+    private static final Duration VIDEO_RETENTION = Duration.ofDays(2);
+
+    private final VideoModelRegistry videoModelRegistry;
+    private final AiGeneratedVideoDownloader videoDownloader;
 
     public GeminiProviderClient(
             ApiCredentialService apiCredentialService,
             AiProviderProperties properties,
             AiRestClientFactory restClientFactory,
-            AiProviderResponseDecoder responseDecoder
+            AiProviderResponseDecoder responseDecoder,
+            VideoModelRegistry videoModelRegistry,
+            AiGeneratedVideoDownloader videoDownloader
     ) {
         super(
                 PROVIDER_NAME,
@@ -34,6 +54,8 @@ public class GeminiProviderClient extends AbstractAiProviderClient {
                 restClientFactory,
                 responseDecoder
         );
+        this.videoModelRegistry = videoModelRegistry;
+        this.videoDownloader = videoDownloader;
     }
 
     @Override
@@ -41,9 +63,7 @@ public class GeminiProviderClient extends AbstractAiProviderClient {
         return switch (request.capability()) {
             case TEXT -> generateText(request, accessToken);
             case IMAGE -> generateImage(request, accessToken);
-            case VIDEO -> throw new UnsupportedOperationException(
-                    "Gemini video generation requires Veo asynchronous operation polling and media download"
-            );
+            case VIDEO -> generateVideo(request, accessToken);
         };
     }
 
@@ -128,6 +148,272 @@ public class GeminiProviderClient extends AbstractAiProviderClient {
                 providerResponseId,
                 providerRequestId
         );
+    }
+
+    private ProviderOutput generateVideo(AiGenerationRequest request, String accessToken) {
+        videoModelRegistry.validate(request.provider(), request.model(), request.videoDurationSeconds());
+        VideoTaskSubmission submission = submitVideo(request, accessToken);
+        VideoArtifactReference artifact = awaitVideo(submission, accessToken);
+        AiGenerationResult.GeneratedMedia media = downloadVideo(artifact, accessToken);
+        return new ProviderOutput(
+                "Gemini Veo operation completed",
+                artifact.taskId(),
+                artifact.providerRequestId(),
+                media
+        );
+    }
+
+    @Override
+    public VideoTaskSubmission submitVideo(AiGenerationRequest request) {
+        videoModelRegistry.validate(request.provider(), request.model(), request.videoDurationSeconds());
+        return submitVideo(request, resolveAccessToken());
+    }
+
+    private VideoTaskSubmission submitVideo(AiGenerationRequest request, String accessToken) {
+        String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
+        ResponseEntity<String> startEntity = restClientFactory.forBaseUrl(baseUrl)
+                .post()
+                .uri(restClientFactory.endpoint(
+                        baseUrl,
+                        "models/" + request.model() + ":predictLongRunning"
+                ))
+                .header("x-goog-api-key", accessToken)
+                .body(new VeoRequest(
+                        List.of(new VeoInstance(request.prompt())),
+                        new VeoParameters(request.videoDurationSeconds(), 1, "720p")
+                ))
+                .retrieve()
+                .toEntity(String.class);
+        AiProviderResponseDecoder.DecodedResponse<VeoOperation> start = responseDecoder.decode(
+                startEntity,
+                VeoOperation.class,
+                "Gemini Veo",
+                "x-goog-request-id",
+                "x-request-id"
+        );
+        String operationName = requireText(
+                start.body() == null ? null : start.body().name(),
+                "Gemini Veo returned no operation name",
+                null,
+                start.providerRequestId()
+        );
+        return new VideoTaskSubmission(
+                operationName,
+                start.providerRequestId(),
+                OffsetDateTime.now()
+        );
+    }
+
+    @Override
+    public VideoArtifactReference awaitVideo(VideoTaskSubmission submission) {
+        return awaitVideo(submission, resolveAccessToken());
+    }
+
+    private VideoArtifactReference awaitVideo(
+            VideoTaskSubmission submission,
+            String accessToken
+    ) {
+        String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
+        VeoOperation completed = pollVeoOperation(
+                baseUrl,
+                submission.taskId(),
+                accessToken,
+                properties.requireProvider(PROVIDER_NAME),
+                submission.providerRequestId()
+        );
+        if (completed.error() != null) {
+            throw new VideoProviderTaskFailedException(
+                    "Gemini Veo task failed: " + safeProviderMessage(completed.error().message()),
+                    submission.taskId(),
+                    submission.providerRequestId()
+            );
+        }
+        String providerRequestId = submission.providerRequestId();
+        String videoUri = videoUri(completed, submission.taskId(), providerRequestId);
+        return new VideoArtifactReference(
+                submission.taskId(),
+                providerRequestId,
+                videoUri,
+                OffsetDateTime.now().plus(VIDEO_RETENTION)
+        );
+    }
+
+    @Override
+    public VideoArtifactReference resolveCompletedVideo(
+            String taskId,
+            String providerRequestId,
+            OffsetDateTime submittedAt
+    ) {
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalArgumentException("Gemini Veo operation name cannot be blank");
+        }
+        try {
+            return awaitVideo(
+                    new VideoTaskSubmission(taskId, providerRequestId, submittedAt),
+                    resolveAccessToken()
+            );
+        } catch (org.springframework.web.client.RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == 404 || exception.getStatusCode().value() == 410) {
+                throw new VideoArtifactExpiredException(
+                        "Gemini Veo operation or generated video is no longer available",
+                        exception
+                );
+            }
+            throw exception;
+        }
+    }
+
+    @Override
+    public AiGenerationResult.GeneratedMedia downloadVideo(VideoArtifactReference artifact) {
+        return downloadVideo(artifact, resolveAccessToken());
+    }
+
+    private AiGenerationResult.GeneratedMedia downloadVideo(
+            VideoArtifactReference artifact,
+            String accessToken
+    ) {
+        AiProviderProperties.Provider provider = properties.requireProvider(PROVIDER_NAME);
+        AiGenerationResult.GeneratedMedia media;
+        try {
+            media = videoDownloader.download(
+                    artifact.artifactUrl(),
+                    Map.of("x-goog-api-key", accessToken),
+                    VIDEO_DOWNLOAD_HOSTS,
+                    provider
+            );
+        } catch (VideoArtifactExpiredException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new AiProviderResponseException(
+                    "Gemini Veo video download failed",
+                    artifact.taskId(),
+                    artifact.providerRequestId(),
+                    exception
+            );
+        }
+        return media;
+    }
+
+    private VeoOperation pollVeoOperation(
+            String baseUrl,
+            String operationName,
+            String accessToken,
+            AiProviderProperties.Provider provider,
+            String initialRequestId
+    ) {
+        long deadline = deadline(provider.getVideoPollTimeout());
+        while (true) {
+            waitForPoll(provider.getVideoPollInterval(), deadline, operationName, initialRequestId);
+            ResponseEntity<String> pollEntity = restClientFactory.forBaseUrl(baseUrl)
+                    .get()
+                    .uri(restClientFactory.endpoint(baseUrl, operationName))
+                    .header("x-goog-api-key", accessToken)
+                    .retrieve()
+                    .toEntity(String.class);
+            AiProviderResponseDecoder.DecodedResponse<VeoOperation> poll = responseDecoder.decode(
+                    pollEntity,
+                    VeoOperation.class,
+                    "Gemini Veo",
+                    "x-goog-request-id",
+                    "x-request-id"
+            );
+            VeoOperation operation = poll.body();
+            if (operation == null) {
+                throw new AiProviderResponseException(
+                        "Gemini Veo returned an empty operation response",
+                        operationName,
+                        firstNonBlank(poll.providerRequestId(), initialRequestId)
+                );
+            }
+            if (Boolean.TRUE.equals(operation.done())) {
+                return operation;
+            }
+            if (System.nanoTime() >= deadline) {
+                throw new AiProviderResponseException(
+                        "Gemini Veo operation timed out",
+                        operationName,
+                        firstNonBlank(poll.providerRequestId(), initialRequestId)
+                );
+            }
+        }
+    }
+
+    private static String videoUri(
+            VeoOperation operation,
+            String operationName,
+            String providerRequestId
+    ) {
+        List<VeoGeneratedSample> samples = operation.response() == null
+                || operation.response().generateVideoResponse() == null
+                ? null
+                : operation.response().generateVideoResponse().generatedSamples();
+        String uri = samples == null || samples.isEmpty() || samples.getFirst() == null
+                || samples.getFirst().video() == null
+                ? null
+                : samples.getFirst().video().uri();
+        return requireText(
+                uri,
+                "Gemini Veo completed without a video URI",
+                operationName,
+                providerRequestId
+        );
+    }
+
+    private static long deadline(Duration timeout) {
+        if (timeout == null || timeout.isZero() || timeout.isNegative()) {
+            throw new IllegalStateException("Gemini Veo poll timeout must be positive");
+        }
+        return System.nanoTime() + timeout.toNanos();
+    }
+
+    private static void waitForPoll(
+            Duration interval,
+            long deadline,
+            String providerResponseId,
+            String providerRequestId
+    ) {
+        if (interval == null || interval.isZero() || interval.isNegative()) {
+            throw new IllegalStateException("Gemini Veo poll interval must be positive");
+        }
+        long remainingNanos = deadline - System.nanoTime();
+        if (remainingNanos <= 0) {
+            throw new AiProviderResponseException(
+                    "Gemini Veo operation timed out",
+                    providerResponseId,
+                    providerRequestId
+            );
+        }
+        try {
+            Thread.sleep(Duration.ofNanos(Math.min(interval.toNanos(), remainingNanos)));
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AiProviderResponseException(
+                    "Gemini Veo polling was interrupted",
+                    providerResponseId,
+                    providerRequestId,
+                    exception
+            );
+        }
+    }
+
+    private static String requireText(
+            String value,
+            String message,
+            String providerResponseId,
+            String providerRequestId
+    ) {
+        if (value == null || value.isBlank()) {
+            throw new AiProviderResponseException(message, providerResponseId, providerRequestId);
+        }
+        return value.trim();
+    }
+
+    private static String safeProviderMessage(String value) {
+        if (value == null || value.isBlank()) {
+            return "unknown provider error";
+        }
+        String normalized = value.replaceAll("[\\r\\n]+", " ").trim();
+        return normalized.length() <= 500 ? normalized : normalized.substring(0, 500);
     }
 
     private static List<GeminiResponsePart> responseParts(
@@ -238,6 +524,42 @@ public class GeminiProviderClient extends AbstractAiProviderClient {
     }
 
     private record PromptFeedback(String blockReason) {
+    }
+
+    private record VeoRequest(List<VeoInstance> instances, VeoParameters parameters) {
+    }
+
+    private record VeoInstance(String prompt) {
+    }
+
+    private record VeoParameters(
+            Integer durationSeconds,
+            Integer numberOfVideos,
+            String resolution
+    ) {
+    }
+
+    private record VeoOperation(
+            String name,
+            Boolean done,
+            VeoOperationResponse response,
+            VeoOperationError error
+    ) {
+    }
+
+    private record VeoOperationResponse(VeoGenerateVideoResponse generateVideoResponse) {
+    }
+
+    private record VeoGenerateVideoResponse(List<VeoGeneratedSample> generatedSamples) {
+    }
+
+    private record VeoGeneratedSample(VeoVideo video) {
+    }
+
+    private record VeoVideo(String uri) {
+    }
+
+    private record VeoOperationError(Integer code, String message, String status) {
     }
 
 }

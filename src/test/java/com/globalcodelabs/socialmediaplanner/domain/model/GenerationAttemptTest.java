@@ -5,6 +5,7 @@ import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationAttemptStatus;
 import org.junit.jupiter.api.Test;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -77,10 +78,60 @@ class GenerationAttemptTest {
         assertThat(attempt.providerRequestId()).isEqualTo("request-456");
     }
 
+    @Test
+    void retriesOnlyDownloadAfterProviderVideoSucceeded() {
+        GenerationAttempt attempt = newAttempt(AiCapability.VIDEO);
+        OffsetDateTime submittedAt = OffsetDateTime.now();
+
+        attempt.markSubmitted("task-123", "request-456", submittedAt);
+        attempt.markProcessing();
+        attempt.markProviderSucceeded(
+                "task-123",
+                "request-456",
+                submittedAt.plusDays(2)
+        );
+        attempt.markDownloadFailed("Temporary storage error", submittedAt.plusMinutes(1));
+        attempt.markProcessing();
+        attempt.markProviderSucceeded(
+                "task-123",
+                "request-789",
+                submittedAt.plusDays(2)
+        );
+        attempt.markDownloaded("media/video.mp4", "video/mp4");
+        attempt.completeDownloadedVideo("Provider video task completed");
+
+        assertThat(attempt.status()).isEqualTo(GenerationAttemptStatus.SUCCEEDED);
+        assertThat(attempt.providerResponseId()).isEqualTo("task-123");
+        assertThat(attempt.downloadRetryCount()).isEqualTo(1);
+        assertThat(attempt.storageKey()).isEqualTo("media/video.mp4");
+    }
+
+    @Test
+    void expiredArtifactRequiresExplicitRegenerationApproval() {
+        GenerationAttempt attempt = newAttempt(AiCapability.VIDEO);
+        OffsetDateTime submittedAt = OffsetDateTime.now();
+
+        attempt.markSubmitted("task-123", null, submittedAt);
+        attempt.markProcessing();
+        attempt.markProviderSucceeded("task-123", null, submittedAt.plusDays(2));
+        attempt.awaitRegenerationConsent("Artifact expired");
+
+        assertThat(attempt.status())
+                .isEqualTo(GenerationAttemptStatus.AWAITING_REGENERATION_CONSENT);
+
+        attempt.approveRegeneration();
+
+        assertThat(attempt.status()).isEqualTo(GenerationAttemptStatus.REGENERATION_APPROVED);
+    }
+
     private static GenerationAttempt newAttempt(AiCapability capability) {
         return GenerationAttempt.start(
                 UUID.randomUUID(), 1, capability, "openai",
-                capability == AiCapability.IMAGE ? "image-test" : "gpt-test",
+                switch (capability) {
+                    case IMAGE -> "image-test";
+                    case VIDEO -> "video-test";
+                    case TEXT -> "gpt-test";
+                },
                 PROMPT_HASH
         );
     }

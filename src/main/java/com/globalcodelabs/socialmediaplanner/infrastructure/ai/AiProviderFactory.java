@@ -3,11 +3,13 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.ai;
 import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.mock.MockAiProviderClient;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.RecoverableVideoProviderClient;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -18,9 +20,9 @@ public class AiProviderFactory {
     private static final Map<String, Set<AiCapability>> REAL_PROVIDER_CAPABILITIES = Map.of(
             "openai", Set.of(AiCapability.TEXT, AiCapability.IMAGE),
             "anthropic", Set.of(AiCapability.TEXT),
-            "gemini", Set.of(AiCapability.TEXT, AiCapability.IMAGE),
+            "gemini", Set.of(AiCapability.TEXT, AiCapability.IMAGE, AiCapability.VIDEO),
             "deepseek", Set.of(AiCapability.TEXT),
-            "qwen", Set.of(AiCapability.TEXT, AiCapability.IMAGE)
+            "qwen", Set.of(AiCapability.TEXT, AiCapability.IMAGE, AiCapability.VIDEO)
     );
 
     private final AiProviderProperties properties;
@@ -69,6 +71,14 @@ public class AiProviderFactory {
         return REAL_PROVIDER_CAPABILITIES
                 .getOrDefault(normalizedProviderName, Set.of())
                 .contains(capability);
+    }
+
+    public Optional<RecoverableVideoProviderClient> findRecoverableVideo(String providerName) {
+        AiProviderClient client = resolve(providerName);
+        if (client instanceof RecoverableVideoProviderClient recoverableVideoProviderClient) {
+            return Optional.of(recoverableVideoProviderClient);
+        }
+        return Optional.empty();
     }
 
     private static String normalize(String providerName) {

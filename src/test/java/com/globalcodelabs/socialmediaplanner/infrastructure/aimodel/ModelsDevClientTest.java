@@ -80,6 +80,12 @@ class ModelsDevClientTest {
         assertThat(find(models, "openai", "gpt-text", AiCapability.TEXT)
                 .rawMetadata().path("family").asText())
                 .isEqualTo("gpt");
+        assertThat(find(models, "openai", "gpt-text", AiCapability.TEXT)
+                .rawMetadata().path("cost").path("input").decimalValue())
+                .isEqualByComparingTo("1.25");
+        assertThat(find(models, "openai", "gpt-text", AiCapability.TEXT)
+                .rawMetadata().path("cost").path("output").decimalValue())
+                .isEqualByComparingTo("10.00");
     }
 
     @Test
@@ -130,6 +136,7 @@ class ModelsDevClientTest {
                         "id": "gpt-text",
                         "name": "GPT Text",
                         "family": "gpt",
+                        "cost": {"input": 1.25, "output": 10.00},
                         "modalities": {"input": ["text", "image"], "output": ["text"]}
                       }
                     }

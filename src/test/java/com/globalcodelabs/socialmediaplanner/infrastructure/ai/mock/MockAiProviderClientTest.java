@@ -83,7 +83,7 @@ class MockAiProviderClientTest {
                 "gemini", AiCapability.IMAGE, "Create an image", "mock-image"
         ));
         AiGenerationResult video = client.generate(new AiGenerationRequest(
-                "gemini", AiCapability.VIDEO, "Create a video", "mock-video"
+                "gemini", AiCapability.VIDEO, "Create a video", "mock-video", 8
         ));
 
         assertThat(image.output()).startsWith("mock://gemini/image/").endsWith(".png");

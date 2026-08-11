@@ -19,6 +19,7 @@ public record CreateGenerationBatchCommand(
         String imageModel,
         String videoProvider,
         String videoModel,
+        Integer videoDurationSeconds,
         GenerationStrategy generationStrategy,
         List<String> links,
         List<UploadedDocument> documents

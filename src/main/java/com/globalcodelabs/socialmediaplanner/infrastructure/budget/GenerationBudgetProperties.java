@@ -40,6 +40,12 @@ public class GenerationBudgetProperties {
     @Min(1)
     private int estimatedOutputTokensPerItem = 300;
 
+    @Min(1)
+    private int estimatedMediaInputTokensPerItem = 500;
+
+    @Min(1)
+    private int estimatedImageOutputTokensPerItem = 1_290;
+
     @Getter
     @Setter
     public static class EstimatedCostUsd {

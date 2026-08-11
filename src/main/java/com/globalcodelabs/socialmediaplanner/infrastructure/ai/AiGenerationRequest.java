@@ -9,8 +9,18 @@ public record AiGenerationRequest(
         String provider,
         AiCapability capability,
         String prompt,
-        String model
+        String model,
+        Integer videoDurationSeconds
 ) {
+    public AiGenerationRequest(
+            String provider,
+            AiCapability capability,
+            String prompt,
+            String model
+    ) {
+        this(provider, capability, prompt, model, null);
+    }
+
     public AiGenerationRequest {
         if (provider == null || provider.isBlank()) {
             throw new IllegalArgumentException("AI provider cannot be blank");
@@ -25,5 +35,12 @@ public record AiGenerationRequest(
         provider = provider.trim().toLowerCase(Locale.ROOT);
         prompt = prompt.trim();
         model = model.trim();
+        if (capability == AiCapability.VIDEO
+                && (videoDurationSeconds == null || videoDurationSeconds <= 0)) {
+            throw new IllegalArgumentException("Video duration must be greater than zero");
+        }
+        if (capability != AiCapability.VIDEO && videoDurationSeconds != null) {
+            throw new IllegalArgumentException("Video duration is only valid for video generation");
+        }
     }
 }

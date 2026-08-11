@@ -1,18 +1,15 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.oauth.x;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
+import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.OAuthClientSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientResponseException;
 
-import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Supplier;
 
@@ -26,13 +23,10 @@ public class XOAuthClient {
 
     public XOAuthClient(XOAuthProperties properties) {
         this.properties = properties;
-        HttpClient httpClient = HttpClient.newBuilder()
-                .connectTimeout(properties.getConnectTimeout())
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .build();
-        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(properties.getReadTimeout());
-        this.restClient = RestClient.builder().requestFactory(requestFactory).build();
+        this.restClient = OAuthClientSupport.restClient(
+                properties.getConnectTimeout(),
+                properties.getReadTimeout()
+        );
     }
 
     public TokenResponse exchangeAuthorizationCode(String code, String codeVerifier) {
@@ -99,36 +93,7 @@ public class XOAuthClient {
     }
 
     private <T> T execute(String operation, Supplier<T> call) {
-        long startedAt = System.nanoTime();
-        MdcUtil.putProvider(PROVIDER);
-        try {
-            log.info("OAuth provider call started operation={}", operation);
-            T result = call.get();
-            log.info("OAuth provider call completed operation={} durationMs={}",
-                    operation, elapsedMilliseconds(startedAt));
-            return result;
-        } catch (RestClientResponseException exception) {
-            if (exception.getStatusCode().is4xxClientError()) {
-                log.warn("OAuth provider call rejected operation={} httpStatus={} durationMs={}",
-                        operation, exception.getStatusCode().value(), elapsedMilliseconds(startedAt));
-            } else {
-                log.error("OAuth provider call failed operation={} httpStatus={} durationMs={}",
-                        operation, exception.getStatusCode().value(),
-                        elapsedMilliseconds(startedAt), exception);
-            }
-            throw exception;
-        } catch (RuntimeException exception) {
-            log.error("OAuth provider call failed operation={} errorType={} durationMs={}",
-                    operation, exception.getClass().getSimpleName(),
-                    elapsedMilliseconds(startedAt), exception);
-            throw exception;
-        } finally {
-            MdcUtil.removeProvider();
-        }
-    }
-
-    private static long elapsedMilliseconds(long startedAt) {
-        return (System.nanoTime() - startedAt) / 1_000_000;
+        return OAuthClientSupport.execute(PROVIDER, operation, call, log);
     }
 
     public record TokenResponse(

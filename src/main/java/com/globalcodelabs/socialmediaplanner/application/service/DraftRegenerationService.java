@@ -30,6 +30,7 @@ import java.util.UUID;
 public class DraftRegenerationService {
 
     private final ContentService contentService;
+    private final GenerationBudgetPolicy generationBudgetPolicy;
     private final AiProviderFactory aiProviderFactory;
     private final MediaContentLoader generatedMediaContentLoader;
     private final LocalMediaStorage mediaStorage;
@@ -58,7 +59,8 @@ public class DraftRegenerationService {
             UUID contentId,
             MediaType mediaType,
             String provider,
-            String model
+            String model,
+            Integer videoDurationSeconds
     ) {
         Content content = loadRegeneratable(contentId);
         AiCapability capability = mediaType == MediaType.IMAGE
@@ -69,8 +71,29 @@ public class DraftRegenerationService {
                 provider,
                 capability,
                 buildMediaPrompt(content, mediaType),
-                model
+                model,
+                capability == AiCapability.VIDEO ? videoDurationSeconds : null
         ));
+        if (result.generatedMedia() != null) {
+            StoredMedia storedMedia = mediaStorage.store(
+                    mediaType,
+                    result.generatedMedia().contentType(),
+                    result.generatedMedia().bytes()
+            );
+            try {
+                return contentService.applyGeneratedMedia(
+                        contentId,
+                        mediaType,
+                        storedMedia.storageKey(),
+                        null,
+                        result.provider(),
+                        result.model()
+                );
+            } catch (RuntimeException exception) {
+                deleteNewMedia(storedMedia.storageKey());
+                throw exception;
+            }
+        }
         String output = requireOutput(result);
         if (output.startsWith("mock://")) {
             String storageKey = "generated/%s/%s/%s".formatted(
@@ -116,6 +139,12 @@ public class DraftRegenerationService {
     }
 
     private AiGenerationResult generate(AiGenerationRequest request) {
+        generationBudgetPolicy.validateSingleGeneration(
+                request.capability(),
+                request.provider(),
+                request.model(),
+                request.videoDurationSeconds()
+        );
         AiGenerationResult result = aiProviderFactory.resolve(request.provider())
                 .generate(request);
         if (result == null || result.capability() != request.capability()) {

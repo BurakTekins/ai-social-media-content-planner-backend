@@ -359,6 +359,24 @@ public class Content {
         this.updatedAt = publishedAt;
     }
 
+    public void markPublishedAfterReview() {
+        requireStatus(ContentStatus.REVIEW_REQUIRED, ContentStatus.PUBLISHED);
+        this.status = ContentStatus.PUBLISHED;
+        this.publicationCheckedAt = OffsetDateTime.now();
+        this.publishedAt = publicationCheckedAt;
+        this.failureReason = null;
+        this.updatedAt = publishedAt;
+    }
+
+    public void markFailedAfterReview() {
+        requireStatus(ContentStatus.REVIEW_REQUIRED, ContentStatus.FAILED);
+        this.status = ContentStatus.FAILED;
+        this.publicationCheckedAt = OffsetDateTime.now();
+        this.publishedAt = null;
+        this.failureReason = "User marked publication as failed after manual review";
+        this.updatedAt = publicationCheckedAt;
+    }
+
     public void markFailed(String reason) {
         if (status != ContentStatus.SCHEDULED && status != ContentStatus.PUBLISHING) {
             throw new InvalidContentStateTransitionException(status, ContentStatus.FAILED);

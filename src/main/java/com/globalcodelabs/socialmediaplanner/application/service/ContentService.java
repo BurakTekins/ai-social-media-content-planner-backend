@@ -23,7 +23,9 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.OffsetDateTime;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -62,6 +64,18 @@ public class ContentService {
     public Content findById(UUID contentId) {
         return contentRepository.findWithMediaById(contentId)
                 .orElseThrow(() -> new ContentNotFoundException(contentId));
+    }
+
+    @Transactional(readOnly = true)
+    public Map<ContentStatus, Long> countByStatus(Platform platform, String title) {
+        String normalizedTitle = title == null || title.isBlank() ? "" : title.trim();
+        Map<ContentStatus, Long> counts = new EnumMap<>(ContentStatus.class);
+        for (ContentStatus status : ContentStatus.values()) {
+            counts.put(status, 0L);
+        }
+        contentRepository.countByStatusAndFilters(platform, normalizedTitle)
+                .forEach(row -> counts.put(row.getStatus(), row.getCount()));
+        return counts;
     }
 
     @Transactional(readOnly = true)
@@ -197,6 +211,22 @@ public class ContentService {
         content.cancelSchedule();
         initializeMedia(content);
         log.info("Content schedule cancelled contentId={}", contentId);
+        return content;
+    }
+
+    @Transactional
+    public Content markReviewPublished(UUID contentId) {
+        Content content = findRequiredWithMedia(contentId);
+        content.markPublishedAfterReview();
+        log.info("Publication review resolved manually contentId={} decision=PUBLISHED", contentId);
+        return content;
+    }
+
+    @Transactional
+    public Content markReviewFailed(UUID contentId) {
+        Content content = findRequiredWithMedia(contentId);
+        content.markFailedAfterReview();
+        log.info("Publication review resolved manually contentId={} decision=FAILED", contentId);
         return content;
     }
 

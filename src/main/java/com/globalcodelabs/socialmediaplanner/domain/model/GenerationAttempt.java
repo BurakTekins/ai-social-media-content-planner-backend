@@ -53,7 +53,7 @@ public class GenerationAttempt {
     private String promptHash;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 40)
     private GenerationAttemptStatus status;
 
     @Column(name = "provider_response_id", columnDefinition = "TEXT")
@@ -73,6 +73,18 @@ public class GenerationAttempt {
 
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
+
+    @Column(name = "provider_submitted_at")
+    private OffsetDateTime providerSubmittedAt;
+
+    @Column(name = "artifact_expires_at")
+    private OffsetDateTime artifactExpiresAt;
+
+    @Column(name = "next_download_retry_at")
+    private OffsetDateTime nextDownloadRetryAt;
+
+    @Column(name = "download_retry_count", nullable = false)
+    private int downloadRetryCount;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
@@ -105,6 +117,7 @@ public class GenerationAttempt {
         this.model = DomainValidation.requireText(model, "AI model cannot be blank");
         this.promptHash = requireHash(promptHash);
         this.status = GenerationAttemptStatus.STARTED;
+        this.downloadRetryCount = 0;
         this.createdAt = OffsetDateTime.now();
         this.updatedAt = createdAt;
     }
@@ -149,10 +162,131 @@ public class GenerationAttempt {
             throw new DomainException("AI generation result does not match attempt");
         }
         this.output = DomainValidation.requireText(output, "AI generation output cannot be blank");
-        this.providerResponseId = optionalValue(providerResponseId);
-        this.providerRequestId = optionalValue(providerRequestId);
+        String normalizedProviderResponseId = optionalValue(providerResponseId);
+        String normalizedProviderRequestId = optionalValue(providerRequestId);
+        if (normalizedProviderResponseId != null) {
+            this.providerResponseId = normalizedProviderResponseId;
+        }
+        if (normalizedProviderRequestId != null) {
+            this.providerRequestId = normalizedProviderRequestId;
+        }
         this.status = GenerationAttemptStatus.SUCCEEDED;
         this.errorMessage = null;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void markSubmitted(
+            String providerTaskId,
+            String providerRequestId,
+            OffsetDateTime submittedAt
+    ) {
+        requireStatus(GenerationAttemptStatus.STARTED);
+        this.providerResponseId = DomainValidation.requireText(
+                providerTaskId,
+                "Provider video task id cannot be blank"
+        );
+        this.providerRequestId = optionalValue(providerRequestId);
+        this.providerSubmittedAt = Objects.requireNonNull(
+                submittedAt,
+                "Provider submission time cannot be null"
+        );
+        this.status = GenerationAttemptStatus.SUBMITTED;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void markProcessing() {
+        requireAnyStatus(
+                GenerationAttemptStatus.SUBMITTED,
+                GenerationAttemptStatus.PROVIDER_SUCCEEDED,
+                GenerationAttemptStatus.DOWNLOAD_FAILED
+        );
+        this.status = GenerationAttemptStatus.PROCESSING;
+        this.nextDownloadRetryAt = null;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void markProviderSucceeded(
+            String providerTaskId,
+            String providerRequestId,
+            OffsetDateTime expiresAt
+    ) {
+        requireAnyStatus(
+                GenerationAttemptStatus.SUBMITTED,
+                GenerationAttemptStatus.PROCESSING
+        );
+        this.providerResponseId = DomainValidation.requireText(
+                providerTaskId,
+                "Provider video task id cannot be blank"
+        );
+        this.providerRequestId = optionalValue(providerRequestId);
+        this.artifactExpiresAt = Objects.requireNonNull(
+                expiresAt,
+                "Video artifact expiry cannot be null"
+        );
+        this.status = GenerationAttemptStatus.PROVIDER_SUCCEEDED;
+        this.errorMessage = null;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void markDownloadFailed(String errorMessage, OffsetDateTime nextRetryAt) {
+        requireAnyStatus(
+                GenerationAttemptStatus.PROVIDER_SUCCEEDED,
+                GenerationAttemptStatus.PROCESSING
+        );
+        this.status = GenerationAttemptStatus.DOWNLOAD_FAILED;
+        this.errorMessage = DomainValidation.requireText(
+                errorMessage,
+                "Video download error cannot be blank"
+        );
+        this.nextDownloadRetryAt = Objects.requireNonNull(
+                nextRetryAt,
+                "Next video download retry time cannot be null"
+        );
+        this.downloadRetryCount++;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void markDownloaded(String storageKey, String mediaContentType) {
+        requireAnyStatus(
+                GenerationAttemptStatus.PROVIDER_SUCCEEDED,
+                GenerationAttemptStatus.PROCESSING
+        );
+        this.storageKey = DomainValidation.requireText(storageKey, "Media storage key cannot be blank");
+        this.mediaContentType = DomainValidation.requireText(
+                mediaContentType,
+                "Media content type cannot be blank"
+        ).toLowerCase(Locale.ROOT);
+        this.status = GenerationAttemptStatus.DOWNLOADED;
+        this.errorMessage = null;
+        this.nextDownloadRetryAt = null;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void completeDownloadedVideo(String output) {
+        requireStatus(GenerationAttemptStatus.DOWNLOADED);
+        this.output = DomainValidation.requireText(output, "AI generation output cannot be blank");
+        this.status = GenerationAttemptStatus.SUCCEEDED;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void awaitRegenerationConsent(String errorMessage) {
+        requireAnyStatus(
+                GenerationAttemptStatus.PROVIDER_SUCCEEDED,
+                GenerationAttemptStatus.PROCESSING,
+                GenerationAttemptStatus.DOWNLOAD_FAILED
+        );
+        this.status = GenerationAttemptStatus.AWAITING_REGENERATION_CONSENT;
+        this.errorMessage = DomainValidation.requireText(
+                errorMessage,
+                "Regeneration consent reason cannot be blank"
+        );
+        this.nextDownloadRetryAt = null;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    public void approveRegeneration() {
+        requireStatus(GenerationAttemptStatus.AWAITING_REGENERATION_CONSENT);
+        this.status = GenerationAttemptStatus.REGENERATION_APPROVED;
         this.updatedAt = OffsetDateTime.now();
     }
 
@@ -170,14 +304,25 @@ public class GenerationAttempt {
             String providerResponseId,
             String providerRequestId
     ) {
-        requireStatus(GenerationAttemptStatus.STARTED);
+        requireAnyStatus(
+                GenerationAttemptStatus.STARTED,
+                GenerationAttemptStatus.SUBMITTED,
+                GenerationAttemptStatus.PROCESSING,
+                GenerationAttemptStatus.PROVIDER_SUCCEEDED
+        );
         this.status = submissionUnknown ? GenerationAttemptStatus.UNKNOWN : GenerationAttemptStatus.FAILED;
         this.errorMessage = DomainValidation.requireText(
                 errorMessage,
                 "Generation attempt error cannot be blank"
         );
-        this.providerResponseId = optionalValue(providerResponseId);
-        this.providerRequestId = optionalValue(providerRequestId);
+        String normalizedProviderResponseId = optionalValue(providerResponseId);
+        String normalizedProviderRequestId = optionalValue(providerRequestId);
+        if (normalizedProviderResponseId != null) {
+            this.providerResponseId = normalizedProviderResponseId;
+        }
+        if (normalizedProviderRequestId != null) {
+            this.providerRequestId = normalizedProviderRequestId;
+        }
         this.updatedAt = OffsetDateTime.now();
     }
 
@@ -209,6 +354,15 @@ public class GenerationAttempt {
         if (status != expected) {
             throw new DomainException("Generation attempt must be " + expected + " but was " + status);
         }
+    }
+
+    private void requireAnyStatus(GenerationAttemptStatus... expectedStatuses) {
+        for (GenerationAttemptStatus expected : expectedStatuses) {
+            if (status == expected) {
+                return;
+            }
+        }
+        throw new DomainException("Generation attempt has invalid status for this transition: " + status);
     }
 
     private static String requireHash(String value) {

@@ -72,7 +72,8 @@ abstract class AbstractAiProviderClient implements AiProviderClient {
                     request.model(),
                     generated.providerResponseId(),
                     generated.providerRequestId(),
-                    generated.output()
+                    generated.output(),
+                    generated.generatedMedia()
             );
         } catch (RestClientException exception) {
             if (exception instanceof RestClientResponseException responseException
@@ -98,6 +99,13 @@ abstract class AbstractAiProviderClient implements AiProviderClient {
 
     protected abstract ProviderOutput execute(AiGenerationRequest request, String accessToken);
 
+    protected final String resolveAccessToken() {
+        return apiCredentialService.resolveActive(
+                CredentialType.AI_PROVIDER,
+                providerName
+        ).accessToken();
+    }
+
     protected static String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -118,7 +126,15 @@ abstract class AbstractAiProviderClient implements AiProviderClient {
     protected record ProviderOutput(
             String output,
             String providerResponseId,
-            String providerRequestId
+            String providerRequestId,
+            AiGenerationResult.GeneratedMedia generatedMedia
     ) {
+        protected ProviderOutput(
+                String output,
+                String providerResponseId,
+                String providerRequestId
+        ) {
+            this(output, providerResponseId, providerRequestId, null);
+        }
     }
 }

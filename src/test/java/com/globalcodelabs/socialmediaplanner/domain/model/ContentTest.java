@@ -104,6 +104,42 @@ class ContentTest {
     }
 
     @Test
+    void resolvesPublicationReviewAsPublished() {
+        Content content = reviewRequiredContent();
+
+        content.markPublishedAfterReview();
+
+        assertThat(content.status()).isEqualTo(ContentStatus.PUBLISHED);
+        assertThat(content.publishedAt()).isNotNull();
+        assertThat(content.publicationCheckedAt()).isNotNull();
+        assertThat(content.failureReason()).isNull();
+    }
+
+    @Test
+    void resolvesPublicationReviewAsFailed() {
+        Content content = reviewRequiredContent();
+
+        content.markFailedAfterReview();
+
+        assertThat(content.status()).isEqualTo(ContentStatus.FAILED);
+        assertThat(content.publishedAt()).isNull();
+        assertThat(content.publicationCheckedAt()).isNotNull();
+        assertThat(content.failureReason()).isEqualTo(
+                "User marked publication as failed after manual review"
+        );
+    }
+
+    @Test
+    void rejectsManualReviewDecisionOutsideReviewRequiredState() {
+        Content content = create(Platform.LINKEDIN, ContentType.POST);
+
+        assertThatThrownBy(content::markPublishedAfterReview)
+                .isInstanceOf(InvalidContentStateTransitionException.class);
+        assertThatThrownBy(content::markFailedAfterReview)
+                .isInstanceOf(InvalidContentStateTransitionException.class);
+    }
+
+    @Test
     void rejectsInvalidStateTransitions() {
         Content draft = create(Platform.LINKEDIN, ContentType.POST);
 
@@ -229,6 +265,13 @@ class ContentTest {
     private static Content scheduledContent() {
         Content content = create(Platform.LINKEDIN, ContentType.POST);
         content.schedule(OffsetDateTime.now().plusHours(1));
+        return content;
+    }
+
+    private static Content reviewRequiredContent() {
+        Content content = scheduledContent();
+        content.startPublishing(UUID.randomUUID());
+        content.requirePublicationReview("Publication confirmation timed out");
         return content;
     }
 

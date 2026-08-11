@@ -13,6 +13,7 @@ import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiModelSelection;
 import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationAttemptStatus;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
+import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttempt;
 import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationBatchStatus;
 import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationAttemptRepository;
@@ -29,6 +30,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -60,7 +62,12 @@ public class GenerationBatchService {
                 command.includeImage(),
                 command.includeVideo(),
                 command.textProvider(),
-                command.textModel()
+                command.textModel(),
+                command.imageProvider(),
+                command.imageModel(),
+                command.videoProvider(),
+                command.videoModel(),
+                command.videoDurationSeconds()
         ));
         AiModelSelection textModel = AiModelSelection.required(
                 command.textProvider(), command.textModel(), "Text"
@@ -83,6 +90,7 @@ public class GenerationBatchService {
         GenerationBatch batch = GenerationBatch.create(
                 command.title(), command.platform(), command.contentType(), command.requestedCount(),
                 textModel, imageModel, videoModel,
+                command.videoDurationSeconds(),
                 command.generationStrategy(), sourceCount
         );
         links.forEach(batch::addLinkSource);
@@ -121,6 +129,65 @@ public class GenerationBatchService {
 
     @Transactional
     public GenerationBatch retry(UUID batchId) {
+        if (generationAttemptRepository.existsByBatchIdAndStatus(
+                batchId,
+                GenerationAttemptStatus.AWAITING_REGENERATION_CONSENT
+        )) {
+            throw new DomainException("Video regeneration requires explicit user consent");
+        }
+        return claimRetry(batchId);
+    }
+
+    @Transactional
+    public Optional<GenerationBatch> retryDueVideoArtifactDownload(UUID batchId) {
+        if (!generationAttemptRepository
+                .existsByBatchIdAndStatusAndNextDownloadRetryAtLessThanEqual(
+                        batchId,
+                        GenerationAttemptStatus.DOWNLOAD_FAILED,
+                        OffsetDateTime.now()
+                )) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(claimRetry(batchId));
+        } catch (GenerationBatchRetryConflictException exception) {
+            return Optional.empty();
+        }
+    }
+
+    @Transactional
+    public VideoRegenerationApproval approveVideoRegeneration(UUID batchId, UUID attemptId) {
+        GenerationAttempt attempt = generationAttemptRepository.findById(attemptId)
+                .orElseThrow(() -> new DomainException("Generation attempt not found"));
+        if (!batchId.equals(attempt.batchId())) {
+            throw new DomainException("Generation attempt does not belong to the requested batch");
+        }
+        if (attempt.capability() != AiCapability.VIDEO) {
+            throw new DomainException("Only video generation can require regeneration consent");
+        }
+        GenerationBatch existingBatch = generationBatchRepository.findOneById(batchId)
+                .orElseThrow(() -> new GenerationBatchNotFoundException(batchId));
+        generationBudgetPolicy.validateSingleGeneration(
+                AiCapability.VIDEO,
+                attempt.provider(),
+                attempt.model(),
+                existingBatch.videoDurationSeconds()
+        );
+        attempt.approveRegeneration();
+        generationAttemptRepository.saveAndFlush(attempt);
+        GenerationBatch batch = claimRetry(batchId);
+        return new VideoRegenerationApproval(batch, attempt.generationIndex());
+    }
+
+    @Transactional(readOnly = true)
+    public List<GenerationAttempt> listAttempts(UUID batchId) {
+        if (!generationBatchRepository.existsById(batchId)) {
+            throw new GenerationBatchNotFoundException(batchId);
+        }
+        return generationAttemptRepository.findAllByBatchIdOrderByCreatedAtAsc(batchId);
+    }
+
+    private GenerationBatch claimRetry(UUID batchId) {
         OffsetDateTime retriedAt = OffsetDateTime.now();
         int claimed = generationBatchRepository.claimFailedForRetry(
                 batchId,
@@ -174,5 +241,11 @@ public class GenerationBatchService {
                             .formatted(providerName, capability)
             );
         }
+    }
+
+    public record VideoRegenerationApproval(
+            GenerationBatch batch,
+            int generationIndex
+    ) {
     }
 }
