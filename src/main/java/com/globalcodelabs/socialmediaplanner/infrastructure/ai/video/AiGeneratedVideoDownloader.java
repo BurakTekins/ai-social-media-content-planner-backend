@@ -1,7 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.ai.video;
 
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationResult;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderProperties;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;

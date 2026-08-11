@@ -1,7 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.ai;
 
 import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.mock.MockAiProviderClient;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.RecoverableVideoProviderClient;
 import org.springframework.stereotype.Component;

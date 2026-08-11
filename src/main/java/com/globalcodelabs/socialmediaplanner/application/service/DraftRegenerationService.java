@@ -111,7 +111,7 @@ public class DraftRegenerationService {
             );
         }
 
-        StoredMediaContent generatedMedia = generatedMediaContentLoader.loadGenerated(mediaType, output);
+        StoredMediaContent generatedMedia = generatedMediaContentLoader.load(mediaType, output);
         StoredMedia storedMedia = mediaStorage.store(
                 mediaType,
                 generatedMedia.contentType(),

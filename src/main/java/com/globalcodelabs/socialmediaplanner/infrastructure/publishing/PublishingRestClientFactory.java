@@ -1,6 +1,5 @@
-package com.globalcodelabs.socialmediaplanner.infrastructure.publishing.config;
+package com.globalcodelabs.socialmediaplanner.infrastructure.publishing;
 
-import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishingProperties;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;

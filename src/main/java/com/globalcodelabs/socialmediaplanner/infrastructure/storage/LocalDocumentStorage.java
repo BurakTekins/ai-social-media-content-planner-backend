@@ -32,7 +32,7 @@ public class LocalDocumentStorage {
         }
     }
 
-    public StoredDocument store(String originalFilename, byte[] content) {
+    public String store(String originalFilename, byte[] content) {
         if (content == null || content.length == 0) {
             throw new IllegalArgumentException("Document cannot be empty");
         }
@@ -41,7 +41,7 @@ public class LocalDocumentStorage {
         Path target = resolveStorageKey(storageKey);
         try {
             Files.write(target, content, StandardOpenOption.CREATE_NEW);
-            return new StoredDocument(storageKey);
+            return storageKey;
         } catch (IOException exception) {
             throw new IllegalStateException("Could not store document", exception);
         }

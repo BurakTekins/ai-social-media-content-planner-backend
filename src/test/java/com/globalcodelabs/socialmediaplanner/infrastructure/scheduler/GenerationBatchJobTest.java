@@ -102,18 +102,43 @@ class GenerationBatchJobTest {
 
     @BeforeEach
     void setUp() {
+        GenerationSourceExtractor sourceExtractor = new GenerationSourceExtractor(
+                generationBatchRepository,
+                sourceTextExtractor
+        );
+        GenerationAttemptLifecycle attemptLifecycle = new GenerationAttemptLifecycle(
+                generationAttemptRepository,
+                mediaStorage
+        );
+        RecoverableVideoGeneration recoverableVideoGeneration = new RecoverableVideoGeneration(
+                generationAttemptRepository,
+                aiProviderFactory,
+                mediaStorage,
+                videoArtifactRecoveryPolicy,
+                attemptLifecycle
+        );
+        GenerationAttemptExecutor attemptExecutor = new GenerationAttemptExecutor(
+                generationAttemptRepository,
+                generationBudgetPolicy,
+                aiProviderFactory,
+                mediaStorage,
+                attemptLifecycle,
+                recoverableVideoGeneration
+        );
+        GeneratedContentGenerator contentGenerator = new GeneratedContentGenerator(
+                generationAttemptRepository,
+                mediaContentLoader,
+                mediaStorage,
+                attemptLifecycle,
+                attemptExecutor,
+                new ObjectMapper()
+        );
         job = new GenerationBatchJob(
                 generationBatchRepository,
                 contentRepository,
-                generationAttemptRepository,
                 generatedContentFinalizer,
-                sourceTextExtractor,
-                aiProviderFactory,
-                mediaContentLoader,
-                mediaStorage,
-                generationBudgetPolicy,
-                videoArtifactRecoveryPolicy,
-                new ObjectMapper()
+                sourceExtractor,
+                contentGenerator
         );
     }
 

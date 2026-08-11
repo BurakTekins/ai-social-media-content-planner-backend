@@ -38,14 +38,14 @@ public class MediaContentLoader {
                 .build();
     }
 
-    public MediaContent load(PublishMedia media) {
+    public StoredMediaContent load(PublishMedia media) {
         if (media.publicUrl() == null || media.publicUrl().isBlank()) {
             return fromStorage(media);
         }
         return load(media.mediaType(), media.publicUrl());
     }
 
-    public MediaContent load(MediaType mediaType, String sourceUrl) {
+    public StoredMediaContent load(MediaType mediaType, String sourceUrl) {
         if (sourceUrl == null || sourceUrl.isBlank()) {
             throw new IllegalArgumentException("Media source URL cannot be blank");
         }
@@ -56,18 +56,13 @@ public class MediaContentLoader {
         return fromRemoteUrl(mediaType, uri);
     }
 
-    public StoredMediaContent loadGenerated(MediaType mediaType, String sourceUrl) {
-        MediaContent content = load(mediaType, sourceUrl);
-        return new StoredMediaContent(content.contentType(), content.bytes());
-    }
-
-    private MediaContent fromStorage(PublishMedia media) {
+    private StoredMediaContent fromStorage(PublishMedia media) {
         byte[] bytes = documentStorage.read(media.storageKey());
         ensureMaximumSize(bytes.length);
         return validatedContent(media.mediaType(), bytes, inferContentType(media.storageKey(), bytes));
     }
 
-    private MediaContent fromDataUri(MediaType mediaType, String sourceUrl) {
+    private StoredMediaContent fromDataUri(MediaType mediaType, String sourceUrl) {
         int separator = sourceUrl.indexOf(',');
         if (separator < 0) {
             throw new IllegalArgumentException("Media data URL is invalid");
@@ -89,7 +84,7 @@ public class MediaContentLoader {
         return validatedContent(mediaType, bytes, contentType);
     }
 
-    private MediaContent fromRemoteUrl(MediaType mediaType, URI initialUri) {
+    private StoredMediaContent fromRemoteUrl(MediaType mediaType, URI initialUri) {
         URI currentUri = initialUri;
         for (int redirectCount = 0; redirectCount <= properties.getMaxMediaRedirects(); redirectCount++) {
             HttpRequest request = HttpRequest.newBuilder(currentUri)
@@ -142,7 +137,7 @@ public class MediaContentLoader {
         throw new IllegalStateException("Media URL exceeded redirect limit");
     }
 
-    private MediaContent validatedContent(MediaType mediaType, byte[] bytes, String contentType) {
+    private StoredMediaContent validatedContent(MediaType mediaType, byte[] bytes, String contentType) {
         String normalized = normalizeContentType(contentType);
         String expectedPrefix = mediaType == MediaType.IMAGE ? "image/" : "video/";
         if (!normalized.startsWith(expectedPrefix)) {
@@ -150,7 +145,7 @@ public class MediaContentLoader {
                     "Media content type does not match declared type " + mediaType
             );
         }
-        return new MediaContent(bytes, normalized);
+        return new StoredMediaContent(normalized, bytes);
     }
 
     private void ensureMaximumSize(int size) {

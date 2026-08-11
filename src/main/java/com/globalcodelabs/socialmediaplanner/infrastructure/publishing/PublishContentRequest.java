@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.publishing;
 
 import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
 import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 
 import java.util.List;
@@ -45,5 +46,11 @@ public record PublishContentRequest(
                 .map(hashtag -> hashtag.startsWith("#") ? hashtag : "#" + hashtag)
                 .collect(Collectors.joining(" "));
         return text + "\n\n" + formattedHashtags;
+    }
+
+    public List<PublishMedia> mediaOfType(MediaType mediaType) {
+        return media.stream()
+                .filter(item -> item.mediaType() == mediaType)
+                .toList();
     }
 }

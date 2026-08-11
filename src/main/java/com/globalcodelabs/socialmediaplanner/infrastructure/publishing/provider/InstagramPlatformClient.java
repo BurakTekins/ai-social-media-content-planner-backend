@@ -10,7 +10,7 @@ import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
 import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
 import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishingProperties;
-import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.config.PublishingRestClientFactory;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishingRestClientFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -104,7 +104,7 @@ public class InstagramPlatformClient implements SocialPlatformClient {
                     .uri(restClientFactory.endpoint(
                             baseUrl, version + "/" + externalPostId + "?fields=id"
                     ))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                    .header(HttpHeaders.AUTHORIZATION, credential.authorizationHeader())
                     .retrieve()
                     .body(ContainerResponse.class);
             boolean published = response != null && externalPostId.equals(response.id());
@@ -163,7 +163,7 @@ public class InstagramPlatformClient implements SocialPlatformClient {
                 .uri(restClientFactory.endpoint(
                         baseUrl, version + "/" + accountIdentifier + "/media"
                 ))
-                .header(HttpHeaders.AUTHORIZATION, bearer(request.credential()))
+                .header(HttpHeaders.AUTHORIZATION, request.credential().authorizationHeader())
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(form)
                 .retrieve()
@@ -172,8 +172,8 @@ public class InstagramPlatformClient implements SocialPlatformClient {
     }
 
     private MultiValueMap<String, String> imagePostForm(PublishContentRequest request) {
-        List<PublishMedia> images = mediaOfType(request, com.globalcodelabs.socialmediaplanner.domain.enums.MediaType.IMAGE);
-        List<PublishMedia> videos = mediaOfType(request, com.globalcodelabs.socialmediaplanner.domain.enums.MediaType.VIDEO);
+        List<PublishMedia> images = request.mediaOfType(com.globalcodelabs.socialmediaplanner.domain.enums.MediaType.IMAGE);
+        List<PublishMedia> videos = request.mediaOfType(com.globalcodelabs.socialmediaplanner.domain.enums.MediaType.VIDEO);
         if (!videos.isEmpty()) {
             throw new IllegalArgumentException("Instagram POST does not support video media");
         }
@@ -187,8 +187,8 @@ public class InstagramPlatformClient implements SocialPlatformClient {
     }
 
     private MultiValueMap<String, String> reelForm(PublishContentRequest request) {
-        List<PublishMedia> images = mediaOfType(request, com.globalcodelabs.socialmediaplanner.domain.enums.MediaType.IMAGE);
-        List<PublishMedia> videos = mediaOfType(request, com.globalcodelabs.socialmediaplanner.domain.enums.MediaType.VIDEO);
+        List<PublishMedia> images = request.mediaOfType(com.globalcodelabs.socialmediaplanner.domain.enums.MediaType.IMAGE);
+        List<PublishMedia> videos = request.mediaOfType(com.globalcodelabs.socialmediaplanner.domain.enums.MediaType.VIDEO);
         if (videos.size() != 1) {
             throw new IllegalArgumentException("Instagram REEL requires exactly one video");
         }
@@ -222,7 +222,7 @@ public class InstagramPlatformClient implements SocialPlatformClient {
                             baseUrl,
                             version + "/" + containerId + "?fields=status_code,status"
                     ))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                    .header(HttpHeaders.AUTHORIZATION, credential.authorizationHeader())
                     .retrieve()
                     .body(ContainerStatusResponse.class);
             String statusCode = response == null ? null : response.statusCode();
@@ -254,7 +254,7 @@ public class InstagramPlatformClient implements SocialPlatformClient {
                 .uri(restClientFactory.endpoint(
                         baseUrl, version + "/" + accountIdentifier + "/media_publish"
                 ))
-                .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                .header(HttpHeaders.AUTHORIZATION, credential.authorizationHeader())
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(form)
                 .retrieve()
@@ -281,15 +281,6 @@ public class InstagramPlatformClient implements SocialPlatformClient {
             throw new IllegalArgumentException("Instagram account identifier must be a numeric account id");
         }
         return accountIdentifier;
-    }
-
-    private static List<PublishMedia> mediaOfType(
-            PublishContentRequest request,
-            com.globalcodelabs.socialmediaplanner.domain.enums.MediaType mediaType
-    ) {
-        return request.media().stream()
-                .filter(media -> media.mediaType() == mediaType)
-                .toList();
     }
 
     private static String requirePublicHttpsUrl(String value, String fieldName) {
@@ -324,10 +315,6 @@ public class InstagramPlatformClient implements SocialPlatformClient {
             throw new IllegalStateException(message);
         }
         return response.id();
-    }
-
-    private static String bearer(PlatformCredential credential) {
-        return "Bearer " + credential.accessToken();
     }
 
     private static void sleep(Duration duration) {

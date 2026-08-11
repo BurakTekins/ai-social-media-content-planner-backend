@@ -13,9 +13,9 @@ import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
 import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
 import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishingProperties;
-import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.config.PublishingRestClientFactory;
-import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.media.MediaContent;
+import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.PublishingRestClientFactory;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.media.MediaContentLoader;
+import com.globalcodelabs.socialmediaplanner.infrastructure.storage.StoredMediaContent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -42,6 +42,12 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
 
     private static final String PROVIDER_NAME = "linkedin";
     private static final String RESTLI_PROTOCOL_VERSION = "2.0.0";
+    private static final String POSTS_PATH = "rest/posts";
+    private static final String IMAGES_PATH = "rest/images";
+    private static final String VIDEOS_PATH = "rest/videos";
+    private static final String INITIALIZE_IMAGE_UPLOAD_PATH = IMAGES_PATH + "?action=initializeUpload";
+    private static final String INITIALIZE_VIDEO_UPLOAD_PATH = VIDEOS_PATH + "?action=initializeUpload";
+    private static final String FINALIZE_VIDEO_UPLOAD_PATH = VIDEOS_PATH + "?action=finalizeUpload";
     private static final Pattern API_VERSION_PATTERN = Pattern.compile("\\d{6}");
 
     private final PublishingProperties properties;
@@ -127,8 +133,8 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
             String owner,
             PublishingProperties.Provider provider
     ) {
-        List<PublishMedia> images = mediaOfType(request, MediaType.IMAGE);
-        List<PublishMedia> videos = mediaOfType(request, MediaType.VIDEO);
+        List<PublishMedia> images = request.mediaOfType(MediaType.IMAGE);
+        List<PublishMedia> videos = request.mediaOfType(MediaType.VIDEO);
         if (!images.isEmpty() && !videos.isEmpty()) {
             throw new IllegalArgumentException("LinkedIn mixed image and video publishing is not supported");
         }
@@ -156,20 +162,20 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
     ) {
         ImageInitializeResponse response = restClientFactory.forBaseUrl(baseUrl)
                 .post()
-                .uri(restClientFactory.endpoint(baseUrl, LinkedInApiPaths.INITIALIZE_IMAGE_UPLOAD))
-                .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                .uri(restClientFactory.endpoint(baseUrl, INITIALIZE_IMAGE_UPLOAD_PATH))
+                .header(HttpHeaders.AUTHORIZATION, credential.authorizationHeader())
                 .header("Linkedin-Version", version)
                 .header("X-Restli-Protocol-Version", RESTLI_PROTOCOL_VERSION)
                 .body(new ImageInitializeRequest(new ImageInitializePayload(owner)))
                 .retrieve()
                 .body(ImageInitializeResponse.class);
         ImageInitializeValue value = requireImageInitializeValue(response);
-        MediaContent content = mediaContentLoader.load(media);
+        StoredMediaContent content = mediaContentLoader.load(media);
         try {
             restClientFactory.forBaseUrl(baseUrl)
                     .put()
                     .uri(requireHttpsUploadUrl(value.uploadUrl()))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                    .header(HttpHeaders.AUTHORIZATION, credential.authorizationHeader())
                     .contentType(org.springframework.http.MediaType.parseMediaType(content.contentType()))
                     .body(content.bytes())
                     .retrieve()
@@ -181,7 +187,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
                 baseUrl,
                 version,
                 credential,
-                LinkedInApiPaths.imageStatus(encodedUrn(value.image())),
+                IMAGES_PATH + "/" + encodedUrn(value.image()),
                 provider.getPollInterval(),
                 provider.getPollTimeout()
         );
@@ -196,12 +202,12 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
             String owner,
             PublishingProperties.Provider provider
     ) {
-        MediaContent content = mediaContentLoader.load(media);
+        StoredMediaContent content = mediaContentLoader.load(media);
         byte[] videoBytes = content.bytes();
         VideoInitializeResponse response = restClientFactory.forBaseUrl(baseUrl)
                 .post()
-                .uri(restClientFactory.endpoint(baseUrl, LinkedInApiPaths.INITIALIZE_VIDEO_UPLOAD))
-                .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                .uri(restClientFactory.endpoint(baseUrl, INITIALIZE_VIDEO_UPLOAD_PATH))
+                .header(HttpHeaders.AUTHORIZATION, credential.authorizationHeader())
                 .header("Linkedin-Version", version)
                 .header("X-Restli-Protocol-Version", RESTLI_PROTOCOL_VERSION)
                 .body(new VideoInitializeRequest(new VideoInitializePayload(
@@ -213,8 +219,8 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
         List<String> uploadedPartIds = uploadVideoParts(value.uploadInstructions(), videoBytes);
         restClientFactory.forBaseUrl(baseUrl)
                 .post()
-                .uri(restClientFactory.endpoint(baseUrl, LinkedInApiPaths.FINALIZE_VIDEO_UPLOAD))
-                .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                .uri(restClientFactory.endpoint(baseUrl, FINALIZE_VIDEO_UPLOAD_PATH))
+                .header(HttpHeaders.AUTHORIZATION, credential.authorizationHeader())
                 .header("Linkedin-Version", version)
                 .header("X-Restli-Protocol-Version", RESTLI_PROTOCOL_VERSION)
                 .body(new VideoFinalizeRequest(new VideoFinalizePayload(
@@ -226,7 +232,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
                 baseUrl,
                 version,
                 credential,
-                LinkedInApiPaths.videoStatus(encodedUrn(value.video())),
+                VIDEOS_PATH + "/" + encodedUrn(value.video()),
                 provider.getPollInterval(), provider.getPollTimeout()
         );
         return value.video();
@@ -287,7 +293,7 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
             MediaStatusResponse response = restClientFactory.forBaseUrl(baseUrl)
                     .get()
                     .uri(restClientFactory.endpoint(baseUrl, statusPath))
-                    .header(HttpHeaders.AUTHORIZATION, bearer(credential))
+                    .header(HttpHeaders.AUTHORIZATION, credential.authorizationHeader())
                     .header("Linkedin-Version", version)
                     .header("X-Restli-Protocol-Version", RESTLI_PROTOCOL_VERSION)
                     .retrieve()
@@ -314,8 +320,8 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
         PostContent content = mediaUrn == null ? null : new PostContent(new PostMedia(mediaUrn));
         ResponseEntity<Void> response = restClientFactory.forBaseUrl(baseUrl)
                 .post()
-                .uri(restClientFactory.endpoint(baseUrl, LinkedInApiPaths.POSTS))
-                .header(HttpHeaders.AUTHORIZATION, bearer(request.credential()))
+                .uri(restClientFactory.endpoint(baseUrl, POSTS_PATH))
+                .header(HttpHeaders.AUTHORIZATION, request.credential().authorizationHeader())
                 .header("Linkedin-Version", version)
                 .header("X-Restli-Protocol-Version", RESTLI_PROTOCOL_VERSION)
                 .body(new PostRequest(
@@ -356,15 +362,6 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
         return owner;
     }
 
-    private static List<PublishMedia> mediaOfType(
-            PublishContentRequest request,
-            MediaType mediaType
-    ) {
-        return request.media().stream()
-                .filter(media -> media.mediaType() == mediaType)
-                .toList();
-    }
-
     private static ImageInitializeValue requireImageInitializeValue(ImageInitializeResponse response) {
         if (response == null
                 || response.value() == null
@@ -402,10 +399,6 @@ public class LinkedInPlatformClient implements SocialPlatformClient {
             throw new IllegalStateException("Platform returned an invalid media upload URL");
         }
         return uri;
-    }
-
-    private static String bearer(PlatformCredential credential) {
-        return "Bearer " + credential.accessToken();
     }
 
     private static String requireApiVersion(String version) {

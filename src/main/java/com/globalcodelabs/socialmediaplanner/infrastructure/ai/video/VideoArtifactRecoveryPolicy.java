@@ -9,14 +9,14 @@ import java.time.ZoneOffset;
 @Component
 public class VideoArtifactRecoveryPolicy {
 
-    private final VideoArtifactRecoveryProperties properties;
+    private final VideoGenerationProperties.Recovery properties;
 
-    public VideoArtifactRecoveryPolicy(VideoArtifactRecoveryProperties properties) {
-        this.properties = properties;
-        requirePositive(properties.getScanInterval(), "scan interval");
-        requirePositive(properties.getInitialBackoff(), "initial backoff");
-        requirePositive(properties.getMaximumBackoff(), "maximum backoff");
-        if (properties.getBatchSize() <= 0) {
+    public VideoArtifactRecoveryPolicy(VideoGenerationProperties properties) {
+        this.properties = properties.getRecovery();
+        requirePositive(this.properties.getScanInterval(), "scan interval");
+        requirePositive(this.properties.getInitialBackoff(), "initial backoff");
+        requirePositive(this.properties.getMaximumBackoff(), "maximum backoff");
+        if (this.properties.getBatchSize() <= 0) {
             throw new IllegalStateException("Video artifact recovery batch size must be positive");
         }
     }

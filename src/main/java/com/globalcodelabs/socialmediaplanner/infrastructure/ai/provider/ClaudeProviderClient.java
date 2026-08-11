@@ -6,7 +6,7 @@ import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialSe
 import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponseException;
 import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiRestClientFactory;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderProperties;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 

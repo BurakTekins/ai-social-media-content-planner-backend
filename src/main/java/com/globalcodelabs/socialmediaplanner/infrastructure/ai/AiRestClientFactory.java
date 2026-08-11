@@ -1,6 +1,5 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.ai;
 
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;

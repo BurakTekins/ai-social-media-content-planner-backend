@@ -2,7 +2,6 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.ai;
 
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiCredentialValidationResult;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;

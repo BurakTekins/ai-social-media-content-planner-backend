@@ -18,4 +18,8 @@ public record PlatformCredential(
         accountIdentifier = accountIdentifier == null ? null : accountIdentifier.trim();
         accessToken = accessToken.trim();
     }
+
+    public String authorizationHeader() {
+        return "Bearer " + accessToken;
+    }
 }

@@ -8,7 +8,7 @@ import com.globalcodelabs.socialmediaplanner.application.service.ResolvedApiCred
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
 import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiRestClientFactory;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.client.RestClientException;

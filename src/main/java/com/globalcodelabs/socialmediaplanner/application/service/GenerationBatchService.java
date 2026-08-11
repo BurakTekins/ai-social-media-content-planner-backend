@@ -4,7 +4,6 @@ import com.globalcodelabs.socialmediaplanner.application.command.CreateGeneratio
 import com.globalcodelabs.socialmediaplanner.application.command.UploadedDocument;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderFactory;
 import com.globalcodelabs.socialmediaplanner.infrastructure.storage.LocalDocumentStorage;
-import com.globalcodelabs.socialmediaplanner.infrastructure.storage.StoredDocument;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.common.exception.GenerationBatchNotFoundException;
 import com.globalcodelabs.socialmediaplanner.common.exception.GenerationBatchRetryConflictException;
@@ -99,9 +98,9 @@ public class GenerationBatchService {
         List<String> storedKeys = new ArrayList<>();
         try {
             documents.forEach(document -> {
-                StoredDocument stored = documentStorage.store(document.originalFilename(), document.content());
-                storedKeys.add(stored.storageKey());
-                batch.addDocumentSource(stored.storageKey());
+                String storageKey = documentStorage.store(document.originalFilename(), document.content());
+                storedKeys.add(storageKey);
+                batch.addDocumentSource(storageKey);
             });
             GenerationBatch savedBatch = generationBatchRepository.saveAndFlush(batch);
             log.info(

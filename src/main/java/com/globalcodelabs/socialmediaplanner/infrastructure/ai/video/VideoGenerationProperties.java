@@ -11,6 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,6 +29,10 @@ public class VideoGenerationProperties {
 
     private Map<String, @NotNull @DecimalMin(value = "0.000001") BigDecimal> currencyToUsd =
             new LinkedHashMap<>();
+
+    @Valid
+    @NotNull
+    private Recovery recovery = new Recovery();
 
     @Getter
     @Setter
@@ -51,5 +56,26 @@ public class VideoGenerationProperties {
 
         @NotBlank
         private String pricingSource;
+    }
+
+    @Getter
+    @Setter
+    public static class Recovery {
+
+        private boolean enabled = true;
+
+        @NotNull
+        private Duration scanInterval = Duration.ofSeconds(30);
+
+        @NotNull
+        private Duration initialBackoff = Duration.ofSeconds(30);
+
+        @NotNull
+        private Duration maximumBackoff = Duration.ofMinutes(30);
+
+        @DecimalMin("1.0")
+        private double multiplier = 2.0;
+
+        private int batchSize = 20;
     }
 }

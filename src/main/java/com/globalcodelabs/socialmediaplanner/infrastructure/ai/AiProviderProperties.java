@@ -1,4 +1,4 @@
-package com.globalcodelabs.socialmediaplanner.infrastructure.ai.config;
+package com.globalcodelabs.socialmediaplanner.infrastructure.ai;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
