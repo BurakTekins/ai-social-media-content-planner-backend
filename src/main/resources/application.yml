@@ -33,6 +33,8 @@ spring:
     multipart:
       max-file-size: ${UPLOAD_MAX_FILE_SIZE:20MB}
       max-request-size: ${UPLOAD_MAX_REQUEST_SIZE:100MB}
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
 
 app:
   security:
@@ -100,10 +102,21 @@ ai-provider:
     qwen:
       base-url: ${QWEN_BASE_URL:}
       media-base-url: ${QWEN_MEDIA_BASE_URL:}
+      video-base-url: ${QWEN_VIDEO_BASE_URL:}
+      video-poll-interval: ${QWEN_VIDEO_POLL_INTERVAL:15s}
+      video-poll-timeout: ${QWEN_VIDEO_POLL_TIMEOUT:10m}
+      video-download-timeout: ${QWEN_VIDEO_DOWNLOAD_TIMEOUT:3m}
+      max-video-bytes: ${QWEN_MAX_VIDEO_BYTES:536870912}
+      max-video-redirects: ${QWEN_MAX_VIDEO_REDIRECTS:5}
     deepseek:
       base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
     gemini:
       base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+      video-poll-interval: ${GEMINI_VIDEO_POLL_INTERVAL:10s}
+      video-poll-timeout: ${GEMINI_VIDEO_POLL_TIMEOUT:7m}
+      video-download-timeout: ${GEMINI_VIDEO_DOWNLOAD_TIMEOUT:3m}
+      max-video-bytes: ${GEMINI_MAX_VIDEO_BYTES:536870912}
+      max-video-redirects: ${GEMINI_MAX_VIDEO_REDIRECTS:5}
 
 models-dev:
   api-url: ${MODELS_DEV_API_URL:https://models.dev/api.json}
@@ -123,11 +136,86 @@ generation:
     max-estimated-cost-usd: ${GENERATION_MAX_ESTIMATED_COST_USD:15.00}
     estimated-input-tokens-per-item: ${GENERATION_ESTIMATED_INPUT_TOKENS_PER_ITEM:2000}
     estimated-output-tokens-per-item: ${GENERATION_ESTIMATED_OUTPUT_TOKENS_PER_ITEM:300}
+    estimated-media-input-tokens-per-item: ${GENERATION_ESTIMATED_MEDIA_INPUT_TOKENS_PER_ITEM:500}
+    estimated-image-output-tokens-per-item: ${GENERATION_ESTIMATED_IMAGE_OUTPUT_TOKENS_PER_ITEM:1290}
     estimated-cost-usd:
       fallback-text-input-per-million-tokens: ${GENERATION_FALLBACK_TEXT_INPUT_USD_PER_MILLION_TOKENS:3.00}
       fallback-text-output-per-million-tokens: ${GENERATION_FALLBACK_TEXT_OUTPUT_USD_PER_MILLION_TOKENS:15.00}
       image-per-item: ${GENERATION_ESTIMATED_IMAGE_COST_USD:0.10}
       video-per-item: ${GENERATION_ESTIMATED_VIDEO_COST_USD:1.00}
+  image:
+    models:
+      - provider: gemini
+        model: gemini-2.5-flash-image
+        estimated-output-tokens-per-item: 1290
+        pricing-source: GOOGLE_GEMINI_2_5_FLASH_IMAGE
+      - provider: gemini
+        model: gemini-3.1-flash-image
+        estimated-output-tokens-per-item: 1120
+        pricing-source: GOOGLE_GEMINI_3_1_FLASH_IMAGE
+      - provider: gemini
+        model: gemini-3.1-flash-image-preview
+        estimated-output-tokens-per-item: 1120
+        pricing-source: GOOGLE_GEMINI_3_1_FLASH_IMAGE
+      - provider: gemini
+        model: gemini-3.1-flash-lite-image
+        estimated-output-tokens-per-item: 1120
+        pricing-source: GOOGLE_GEMINI_3_1_FLASH_LITE_IMAGE
+      - provider: gemini
+        model: gemini-3-pro-image
+        estimated-output-tokens-per-item: 2000
+        pricing-source: GOOGLE_GEMINI_3_PRO_IMAGE_CONSERVATIVE
+      - provider: gemini
+        model: gemini-3-pro-image-preview
+        estimated-output-tokens-per-item: 2000
+        pricing-source: GOOGLE_GEMINI_3_PRO_IMAGE_CONSERVATIVE
+  video:
+    recovery:
+      enabled: ${VIDEO_ARTIFACT_RECOVERY_ENABLED:true}
+      scan-interval: ${VIDEO_ARTIFACT_RECOVERY_SCAN_INTERVAL:30s}
+      initial-backoff: ${VIDEO_ARTIFACT_RECOVERY_INITIAL_BACKOFF:30s}
+      maximum-backoff: ${VIDEO_ARTIFACT_RECOVERY_MAX_BACKOFF:30m}
+      multiplier: ${VIDEO_ARTIFACT_RECOVERY_MULTIPLIER:2.0}
+      batch-size: ${VIDEO_ARTIFACT_RECOVERY_BATCH_SIZE:20}
+    currency-to-usd:
+      CNY: ${GENERATION_CNY_TO_USD_RATE:0.14}
+    models:
+      - provider: gemini
+        model: veo-3.1-generate-preview
+        supported-duration-seconds: [4, 6, 8]
+        cost-per-second: 0.40
+        currency: USD
+        pricing-source: GOOGLE_VEO_3_1_STANDARD
+      - provider: gemini
+        model: veo-3.1-fast-generate-preview
+        supported-duration-seconds: [4, 6, 8]
+        cost-per-second: 0.10
+        currency: USD
+        pricing-source: GOOGLE_VEO_3_1_FAST_720P
+      - provider: gemini
+        model: veo-3.1-lite-generate-preview
+        supported-duration-seconds: [4, 6, 8]
+        cost-per-second: 0.05
+        currency: USD
+        pricing-source: GOOGLE_VEO_3_1_LITE_720P
+      - provider: qwen
+        model: wan2.7-t2v
+        supported-duration-seconds: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        cost-per-second: 0.733924
+        currency: CNY
+        pricing-source: ALIBABA_WAN_2_7_720P_INTERNATIONAL
+      - provider: qwen
+        model: wan2.7-t2v-2026-06-12
+        supported-duration-seconds: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        cost-per-second: 0.74942
+        currency: CNY
+        pricing-source: ALIBABA_WAN_2_7_SNAPSHOT_720P_INTERNATIONAL
+      - provider: qwen
+        model: wan2.6-t2v
+        supported-duration-seconds: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        cost-per-second: 0.733924
+        currency: CNY
+        pricing-source: ALIBABA_WAN_2_6_720P_INTERNATIONAL
 
 publishing:
   mode: ${PUBLISHING_MODE:mock}
@@ -163,6 +251,7 @@ publishing:
 
 server:
   port: ${SERVER_PORT:8080}
+  shutdown: graceful
   error:
     include-stacktrace: never
     include-exception: false

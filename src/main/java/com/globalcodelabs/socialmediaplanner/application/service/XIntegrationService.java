@@ -1,8 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.application.command.ConnectSocialCredentialCommand;
-import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialService;
-import com.globalcodelabs.socialmediaplanner.application.service.ResolvedApiCredential;
 import com.globalcodelabs.socialmediaplanner.common.exception.OAuthConnectionException;
 import com.globalcodelabs.socialmediaplanner.domain.model.ApiCredential;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.x.XOAuthClient;
@@ -10,7 +8,6 @@ import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.x.XOAuthProper
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.nio.charset.StandardCharsets;
@@ -84,21 +81,15 @@ public class XIntegrationService {
             token = xOAuthClient.exchangeAuthorizationCode(
                     code, pending.codeVerifier()
             );
-        } catch (RestClientResponseException exception) {
-            throw tokenExchangeException(exception);
         } catch (RestClientException exception) {
-            throw new OAuthConnectionException(
-                    OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
-                    "X erişim anahtarı alınamadı",
-                    exception
-            );
+            throw SocialIntegrationSupport.tokenExchangeException("X", exception);
         }
 
         XOAuthClient.UserData user;
         try {
             user = xOAuthClient.getAuthenticatedUser(token.accessToken());
         } catch (RestClientException exception) {
-            throw accountLookupException("X", exception);
+            throw SocialIntegrationSupport.accountLookupException("X", exception);
         }
 
         OffsetDateTime now = OffsetDateTime.now();
@@ -140,17 +131,17 @@ public class XIntegrationService {
         } catch (OAuthConnectionException exception) {
             throw exception;
         } catch (RestClientException exception) {
-            throw accountLookupException("X", exception);
+            throw SocialIntegrationSupport.accountLookupException("X", exception);
         }
     }
 
     public String frontendRedirectUri(String status, String errorCode) {
-        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(properties.requireFrontendRedirectUri())
-                .queryParam("xConnection", status);
-        if (errorCode != null) {
-            builder.queryParam("errorCode", errorCode);
-        }
-        return builder.build().encode().toUriString();
+        return SocialIntegrationSupport.frontendRedirectUri(
+                properties.requireFrontendRedirectUri(),
+                "xConnection",
+                status,
+                errorCode
+        );
     }
 
     private void removeExpiredStates() {
@@ -170,30 +161,6 @@ public class XIntegrationService {
             return user.name();
         }
         return "@" + user.username();
-    }
-
-    private static OAuthConnectionException tokenExchangeException(RestClientResponseException exception) {
-        String errorCode = exception.getStatusCode().value() == 401
-                ? OAuthConnectionException.CONFIGURATION_ERROR
-                : OAuthConnectionException.TOKEN_EXCHANGE_FAILED;
-        String message = errorCode.equals(OAuthConnectionException.CONFIGURATION_ERROR)
-                ? "X uygulama yapılandırması geçersiz"
-                : "X erişim anahtarı alınamadı";
-        return new OAuthConnectionException(errorCode, message, exception);
-    }
-
-    private static OAuthConnectionException accountLookupException(
-            String provider,
-            RestClientException exception
-    ) {
-        String errorCode = exception instanceof RestClientResponseException response
-                && (response.getStatusCode().value() == 401 || response.getStatusCode().value() == 403)
-                ? OAuthConnectionException.PERMISSION_MISSING
-                : OAuthConnectionException.ACCOUNT_LOOKUP_FAILED;
-        String message = errorCode.equals(OAuthConnectionException.PERMISSION_MISSING)
-                ? provider + " hesabı için gerekli izinler bulunmuyor"
-                : provider + " hesap bilgileri alınamadı";
-        return new OAuthConnectionException(errorCode, message, exception);
     }
 
     private static String randomUrlSafeValue(int byteCount) {

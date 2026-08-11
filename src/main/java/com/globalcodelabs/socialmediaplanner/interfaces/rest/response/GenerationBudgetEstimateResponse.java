@@ -14,7 +14,15 @@ public record GenerationBudgetEstimateResponse(
         int estimatedOutputTokens,
         BigDecimal textInputCostUsdPerMillionTokens,
         BigDecimal textOutputCostUsdPerMillionTokens,
-        String textPricingSource
+        String textPricingSource,
+        String imagePricingSource,
+        String videoPricingSource,
+        BigDecimal imageInputCostUsdPerMillionTokens,
+        BigDecimal imageOutputCostUsdPerMillionTokens,
+        BigDecimal videoInputCostUsdPerMillionTokens,
+        BigDecimal videoOutputCostUsdPerMillionTokens,
+        Integer videoDurationSeconds,
+        BigDecimal videoCostUsdPerSecond
 ) {
     public static GenerationBudgetEstimateResponse from(GenerationBudgetPolicy.Estimate estimate) {
         return new GenerationBudgetEstimateResponse(
@@ -27,7 +35,15 @@ public record GenerationBudgetEstimateResponse(
                 estimate.estimatedOutputTokens(),
                 estimate.textInputCostUsdPerMillionTokens(),
                 estimate.textOutputCostUsdPerMillionTokens(),
-                estimate.textPricingSource()
+                estimate.textPricingSource(),
+                estimate.imagePricingSource(),
+                estimate.videoPricingSource(),
+                estimate.imageInputCostUsdPerMillionTokens(),
+                estimate.imageOutputCostUsdPerMillionTokens(),
+                estimate.videoInputCostUsdPerMillionTokens(),
+                estimate.videoOutputCostUsdPerMillionTokens(),
+                estimate.videoDurationSeconds(),
+                estimate.videoCostUsdPerSecond()
         );
     }
 }

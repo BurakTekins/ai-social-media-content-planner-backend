@@ -1,8 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.application.command.ConnectSocialCredentialCommand;
-import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialService;
-import com.globalcodelabs.socialmediaplanner.application.service.ResolvedApiCredential;
 import com.globalcodelabs.socialmediaplanner.common.exception.OAuthConnectionException;
 import com.globalcodelabs.socialmediaplanner.domain.model.ApiCredential;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.OAuthStateStore;
@@ -11,7 +9,6 @@ import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.instagram.Inst
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.OffsetDateTime;
@@ -43,27 +40,21 @@ public class InstagramIntegrationService {
     }
 
     public ConnectionResult complete(String code, String state) {
-        requireCode(code);
+        SocialIntegrationSupport.requireCode(code, "Instagram");
         stateStore.consume(PROVIDER, state);
         InstagramOAuthClient.ShortTokenResponse shortToken;
         InstagramOAuthClient.LongTokenResponse token;
         try {
             shortToken = client.exchange(code);
             token = client.exchangeLongLived(shortToken.accessToken());
-        } catch (RestClientResponseException exception) {
-            throw tokenExchangeException(exception);
         } catch (RestClientException exception) {
-            throw new OAuthConnectionException(
-                    OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
-                    "Instagram erişim anahtarı alınamadı",
-                    exception
-            );
+            throw SocialIntegrationSupport.tokenExchangeException("Instagram", exception);
         }
         InstagramOAuthClient.UserInfo user;
         try {
             user = client.userInfo(token.accessToken());
         } catch (RestClientException exception) {
-            throw accountLookupException(exception);
+            throw SocialIntegrationSupport.accountLookupException("Instagram", exception);
         }
         String accountId = shortToken.userId();
         if (!accountId.equals(user.accountId())) {
@@ -91,7 +82,7 @@ public class InstagramIntegrationService {
         try {
             user = client.userInfo(credential.accessToken());
         } catch (RestClientException exception) {
-            throw accountLookupException(exception);
+            throw SocialIntegrationSupport.accountLookupException("Instagram", exception);
         }
         if (!user.accountId().equals(credential.accountIdentifier())) {
             throw new OAuthConnectionException(
@@ -103,42 +94,11 @@ public class InstagramIntegrationService {
     }
 
     public String frontendRedirectUri(String status, String errorCode) {
-        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(properties.requireFrontendRedirectUri())
-                .queryParam("instagramConnection", status);
-        if (errorCode != null) builder.queryParam("errorCode", errorCode);
-        return builder.build().encode().toUriString();
-    }
-
-    private static void requireCode(String code) {
-        if (code == null || code.isBlank()) {
-            throw new OAuthConnectionException(
-                    OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
-                    "Instagram hesap bağlantısı tamamlanamadı"
-            );
-        }
-    }
-
-    private static OAuthConnectionException tokenExchangeException(RestClientResponseException exception) {
-        String errorCode = exception.getStatusCode().value() == 401
-                ? OAuthConnectionException.CONFIGURATION_ERROR
-                : OAuthConnectionException.TOKEN_EXCHANGE_FAILED;
-        String message = errorCode.equals(OAuthConnectionException.CONFIGURATION_ERROR)
-                ? "Instagram uygulama yapılandırması geçersiz"
-                : "Instagram erişim anahtarı alınamadı";
-        return new OAuthConnectionException(errorCode, message, exception);
-    }
-
-    private static OAuthConnectionException accountLookupException(RestClientException exception) {
-        boolean permissionMissing = exception instanceof RestClientResponseException response
-                && (response.getStatusCode().value() == 401 || response.getStatusCode().value() == 403);
-        return new OAuthConnectionException(
-                permissionMissing
-                        ? OAuthConnectionException.PERMISSION_MISSING
-                        : OAuthConnectionException.ACCOUNT_LOOKUP_FAILED,
-                permissionMissing
-                        ? "Instagram hesabı için gerekli izinler bulunmuyor"
-                        : "Instagram hesap bilgileri alınamadı",
-                exception
+        return SocialIntegrationSupport.frontendRedirectUri(
+                properties.requireFrontendRedirectUri(),
+                "instagramConnection",
+                status,
+                errorCode
         );
     }
 

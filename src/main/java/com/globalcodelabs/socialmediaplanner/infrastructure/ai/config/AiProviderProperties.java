@@ -65,5 +65,25 @@ public class AiProviderProperties {
         private String baseUrl;
 
         private String mediaBaseUrl;
+
+        private String videoBaseUrl;
+
+        private Duration videoPollInterval = Duration.ofSeconds(10);
+
+        private Duration videoPollTimeout = Duration.ofMinutes(10);
+
+        private Duration videoDownloadTimeout = Duration.ofMinutes(3);
+
+        private int maxVideoBytes = 536_870_912;
+
+        private int maxVideoRedirects = 5;
+    }
+
+    public String requireVideoBaseUrl(String providerName) {
+        String videoBaseUrl = requireProvider(providerName).getVideoBaseUrl();
+        if (videoBaseUrl == null || videoBaseUrl.isBlank()) {
+            throw new IllegalStateException("Video base URL is not configured for AI provider: " + providerName);
+        }
+        return videoBaseUrl.trim();
     }
 }

@@ -47,6 +47,22 @@ public interface ContentRepository extends JpaRepository<Content, UUID> {
             Pageable pageable
     );
 
+    @Query("""
+            SELECT content.status AS status, COUNT(content) AS count
+            FROM Content content
+            WHERE (:platform IS NULL OR content.platform = :platform)
+              AND (
+                    :searchTerm = ''
+                    OR LOWER(content.title) LIKE CONCAT('%', LOWER(:searchTerm), '%')
+                    OR LOWER(content.text) LIKE CONCAT('%', LOWER(:searchTerm), '%')
+              )
+            GROUP BY content.status
+            """)
+    List<ContentStatusCount> countByStatusAndFilters(
+            @Param("platform") Platform platform,
+            @Param("searchTerm") String searchTerm
+    );
+
     @EntityGraph(attributePaths = "media")
     @Query("SELECT content FROM Content content WHERE content.id = :contentId")
     Optional<Content> findWithMediaById(@Param("contentId") UUID contentId);
@@ -101,4 +117,10 @@ public interface ContentRepository extends JpaRepository<Content, UUID> {
             FOR UPDATE SKIP LOCKED
             """, nativeQuery = true)
     Optional<UUID> lockNextTimedOutPublicationId(@Param("deadline") OffsetDateTime deadline);
+
+    interface ContentStatusCount {
+        ContentStatus getStatus();
+
+        long getCount();
+    }
 }

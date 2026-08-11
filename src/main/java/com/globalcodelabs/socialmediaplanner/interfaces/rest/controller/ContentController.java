@@ -11,6 +11,7 @@ import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
 import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.CreateContentRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.AiModelSelectionRequest;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.RegenerateMediaRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.ScheduleContentRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.UpdateDraftContentRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.ContentPageResponse;
@@ -47,6 +48,7 @@ import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -90,6 +92,14 @@ public class ContentController {
                 Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))
         );
         return ContentPageResponse.from(contentService.findAll(status, platform, batchId, title, pageRequest));
+    }
+
+    @GetMapping("/status-counts")
+    public Map<ContentStatus, Long> countByStatus(
+            @RequestParam(required = false) Platform platform,
+            @RequestParam(required = false) @Size(max = 255) String title
+    ) {
+        return contentService.countByStatus(platform, title);
     }
 
     @GetMapping("/calendar")
@@ -146,14 +156,15 @@ public class ContentController {
     public ContentResponse regenerateMedia(
             @PathVariable UUID contentId,
             @PathVariable MediaType mediaType,
-            @Valid @RequestBody AiModelSelectionRequest request
+            @Valid @RequestBody RegenerateMediaRequest request
     ) {
         return ContentResponse.from(
                 draftRegenerationService.regenerateMedia(
                         contentId,
                         mediaType,
                         request.provider(),
-                        request.model()
+                        request.model(),
+                        request.videoDurationSeconds()
                 )
         );
     }
@@ -211,6 +222,16 @@ public class ContentController {
     @DeleteMapping("/{contentId}/schedule")
     public ContentResponse cancelSchedule(@PathVariable UUID contentId) {
         return ContentResponse.from(contentService.cancelSchedule(contentId));
+    }
+
+    @PutMapping("/{contentId}/review/published")
+    public ContentResponse markReviewPublished(@PathVariable UUID contentId) {
+        return ContentResponse.from(contentService.markReviewPublished(contentId));
+    }
+
+    @PutMapping("/{contentId}/review/failed")
+    public ContentResponse markReviewFailed(@PathVariable UUID contentId) {
+        return ContentResponse.from(contentService.markReviewFailed(contentId));
     }
 
     @DeleteMapping("/{contentId}")

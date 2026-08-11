@@ -10,6 +10,7 @@ import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiModelSelection;
 import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
 import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationAttemptStatus;
+import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttempt;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
 import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationBatchStatus;
 import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
@@ -34,6 +35,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -142,6 +145,70 @@ class GenerationBatchServiceTest {
     }
 
     @Test
+    void approvesOnlyTheSelectedVideoAttemptWhenTwoSlotsAwaitConsent() {
+        GenerationBatch batch = failedBatch();
+        GenerationAttempt selectedAttempt = awaitingVideoConsent(batch.id(), 1);
+        GenerationAttempt untouchedAttempt = awaitingVideoConsent(batch.id(), 2);
+
+        when(generationAttemptRepository.findById(selectedAttempt.id()))
+                .thenReturn(Optional.of(selectedAttempt));
+        when(generationAttemptRepository.saveAndFlush(selectedAttempt)).thenReturn(selectedAttempt);
+        when(generationBatchRepository.claimFailedForRetry(
+                eq(batch.id()),
+                eq(GenerationBatchStatus.FAILED),
+                eq(GenerationBatchStatus.IN_PROGRESS),
+                any(OffsetDateTime.class)
+        )).thenAnswer(invocation -> {
+            batch.retry();
+            return 1;
+        });
+        when(generationBatchRepository.findOneById(batch.id())).thenReturn(Optional.of(batch));
+
+        GenerationBatchService.VideoRegenerationApproval approval =
+                generationBatchService.approveVideoRegeneration(batch.id(), selectedAttempt.id());
+
+        assertThat(approval.generationIndex()).isEqualTo(1);
+        assertThat(selectedAttempt.status()).isEqualTo(GenerationAttemptStatus.REGENERATION_APPROVED);
+        assertThat(untouchedAttempt.status())
+                .isEqualTo(GenerationAttemptStatus.AWAITING_REGENERATION_CONSENT);
+        verify(generationBudgetPolicy).validateSingleGeneration(
+                AiCapability.VIDEO,
+                "gemini",
+                "veo-3.1-generate-preview",
+                null
+        );
+        verify(generationAttemptRepository).saveAndFlush(selectedAttempt);
+    }
+
+    @Test
+    void rejectsVideoRegenerationConsentBeforeApprovalWhenSingleCallExceedsBudget() {
+        GenerationBatch batch = failedBatch();
+        GenerationAttempt attempt = awaitingVideoConsent(batch.id(), 1);
+        when(generationAttemptRepository.findById(attempt.id())).thenReturn(Optional.of(attempt));
+        when(generationBatchRepository.findOneById(batch.id())).thenReturn(Optional.of(batch));
+        doThrow(new DomainException("Estimated generation cost exceeds configured budget limit"))
+                .when(generationBudgetPolicy)
+                .validateSingleGeneration(
+                        AiCapability.VIDEO,
+                        "gemini",
+                        "veo-3.1-generate-preview",
+                        null
+                );
+
+        assertThatThrownBy(() -> generationBatchService.approveVideoRegeneration(
+                batch.id(), attempt.id()
+        )).isInstanceOf(DomainException.class)
+                .hasMessageContaining("budget limit");
+
+        assertThat(attempt.status())
+                .isEqualTo(GenerationAttemptStatus.AWAITING_REGENERATION_CONSENT);
+        verify(generationAttemptRepository, never()).saveAndFlush(attempt);
+        verify(generationBatchRepository, never()).claimFailedForRetry(
+                any(), any(), any(), any()
+        );
+    }
+
+    @Test
     void rejectsUnsupportedVideoProviderBeforePersistingOrStoringDocuments() {
         AiProviderFactory realModeProviderFactory = mock(AiProviderFactory.class);
         when(realModeProviderFactory.supports("openai", AiCapability.TEXT)).thenReturn(true);
@@ -166,6 +233,7 @@ class GenerationBatchServiceTest {
                 null,
                 "qwen",
                 "video-model",
+                null,
                 null,
                 List.of("https://example.com/source"),
                 List.of()
@@ -198,6 +266,7 @@ class GenerationBatchServiceTest {
                 "qwen",
                 "video-model",
                 null,
+                null,
                 List.of("https://example.com/source"),
                 List.of()
         );
@@ -222,6 +291,23 @@ class GenerationBatchServiceTest {
         return batch;
     }
 
+    private static GenerationAttempt awaitingVideoConsent(UUID batchId, int generationIndex) {
+        OffsetDateTime submittedAt = OffsetDateTime.now();
+        GenerationAttempt attempt = GenerationAttempt.start(
+                batchId,
+                generationIndex,
+                AiCapability.VIDEO,
+                "gemini",
+                "veo-3.1-generate-preview",
+                Integer.toHexString(generationIndex).repeat(64).substring(0, 64)
+        );
+        attempt.markSubmitted("task-" + generationIndex, null, submittedAt);
+        attempt.markProcessing();
+        attempt.markProviderSucceeded("task-" + generationIndex, null, submittedAt.plusDays(2));
+        attempt.awaitRegenerationConsent("Artifact expired");
+        return attempt;
+    }
+
     private static GenerationBatch createBatch() {
         return GenerationBatch.create(
                 "Test batch",
@@ -229,6 +315,7 @@ class GenerationBatchServiceTest {
                 ContentType.POST,
                 2,
                 AiModelSelection.required("openai", "text-model", "Text"),
+                null,
                 null,
                 null,
                 null,

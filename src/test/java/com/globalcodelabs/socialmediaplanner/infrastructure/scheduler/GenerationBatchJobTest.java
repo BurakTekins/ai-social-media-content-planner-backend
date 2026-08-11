@@ -6,8 +6,11 @@ import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationResul
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderClient;
 import com.globalcodelabs.socialmediaplanner.infrastructure.extraction.DefaultSourceTextExtractor;
 import com.globalcodelabs.socialmediaplanner.infrastructure.storage.LocalMediaStorage;
+import com.globalcodelabs.socialmediaplanner.infrastructure.storage.StoredMedia;
 import com.globalcodelabs.socialmediaplanner.application.service.GeneratedContentFinalizer;
+import com.globalcodelabs.socialmediaplanner.application.service.GenerationBudgetPolicy;
 import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponseException;
+import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiModelSelection;
 import com.globalcodelabs.socialmediaplanner.domain.model.Content;
@@ -16,12 +19,15 @@ import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationAttempt;
 import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationAttemptStatus;
 import com.globalcodelabs.socialmediaplanner.domain.model.GenerationBatch;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationBatchStatus;
 import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
 import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.domain.repository.ContentRepository;
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationAttemptRepository;
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationBatchRepository;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderFactory;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoArtifactRecoveryPolicy;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.RecoverableVideoProviderClient;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.media.MediaContentLoader;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +50,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -80,6 +87,15 @@ class GenerationBatchJobTest {
     private LocalMediaStorage mediaStorage;
 
     @Mock
+    private GenerationBudgetPolicy generationBudgetPolicy;
+
+    @Mock
+    private VideoArtifactRecoveryPolicy videoArtifactRecoveryPolicy;
+
+    @Mock
+    private RecoverableVideoProviderClient recoverableVideoProviderClient;
+
+    @Mock
     private AiProviderClient aiProviderClient;
 
     private GenerationBatchJob job;
@@ -95,6 +111,8 @@ class GenerationBatchJobTest {
                 aiProviderFactory,
                 mediaContentLoader,
                 mediaStorage,
+                generationBudgetPolicy,
+                videoArtifactRecoveryPolicy,
                 new ObjectMapper()
         );
     }
@@ -140,6 +158,34 @@ class GenerationBatchJobTest {
     }
 
     @Test
+    void targetedRunProcessesOnlyTheApprovedGenerationIndex() {
+        GenerationBatch batch = batchWithCompletedSource(2);
+        when(contentRepository.findGenerationIndexesByBatchId(batch.id())).thenReturn(List.of());
+        when(generatedContentFinalizer.reconcileCompletedCount(batch.id(), 0)).thenReturn(batch);
+        when(generationBatchRepository.findOneById(batch.id())).thenReturn(Optional.of(batch));
+        when(generationAttemptRepository
+                .findFirstByBatchIdAndGenerationIndexAndCapabilityAndPromptHashAndStatusOrderByCreatedAtDesc(
+                        eq(batch.id()), eq(1), eq(AiCapability.TEXT), anyString(), any()
+                )).thenReturn(Optional.empty());
+        when(generationAttemptRepository.saveAndFlush(any(GenerationAttempt.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(aiProviderFactory.resolve("mock")).thenReturn(aiProviderClient);
+        when(aiProviderClient.generate(any())).thenReturn(textResult());
+        when(generatedContentFinalizer.storeGeneratedContent(eq(batch.id()), eq(1), any()))
+                .thenAnswer(invocation -> {
+                    batch.recordCompletedContent();
+                    return true;
+                });
+
+        job.start(batch.id(), 1);
+
+        verify(aiProviderClient, times(1)).generate(any());
+        verify(generatedContentFinalizer).storeGeneratedContent(eq(batch.id()), eq(1), any());
+        verify(generatedContentFinalizer, never()).storeGeneratedContent(eq(batch.id()), eq(2), any());
+        assertThat(batch.status()).isEqualTo(GenerationBatchStatus.FAILED);
+    }
+
+    @Test
     void reusesPersistedSuccessfulAttemptWithoutCallingProviderAgain() {
         GenerationBatch batch = batchWithCompletedSource(1);
         batch.markFailed("content persistence failed");
@@ -175,6 +221,133 @@ class GenerationBatchJobTest {
     }
 
     @Test
+    void blocksNewRetryAttemptBeforeProviderCallWhenSingleGenerationExceedsBudget() {
+        GenerationBatch batch = batchWithCompletedSource(1);
+        batch.markFailed("provider failed");
+        batch.retry();
+        when(contentRepository.findGenerationIndexesByBatchId(batch.id())).thenReturn(List.of());
+        when(generatedContentFinalizer.reconcileCompletedCount(batch.id(), 0)).thenReturn(batch);
+        when(generationBatchRepository.findOneById(batch.id())).thenReturn(Optional.of(batch));
+        when(generationAttemptRepository
+                .findFirstByBatchIdAndGenerationIndexAndCapabilityAndPromptHashAndStatusOrderByCreatedAtDesc(
+                        eq(batch.id()), eq(1), eq(AiCapability.TEXT), anyString(), any()
+                )).thenReturn(Optional.empty());
+        doThrow(new DomainException("Estimated generation cost exceeds configured budget limit"))
+                .when(generationBudgetPolicy)
+                .validateSingleGeneration(AiCapability.TEXT, "mock", "text-model", null);
+
+        job.start(batch.id());
+
+        verify(generationAttemptRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(aiProviderFactory, aiProviderClient);
+        verify(generatedContentFinalizer, never()).storeGeneratedContent(any(), anyInt(), any());
+        assertThat(batch.status()).isEqualTo(GenerationBatchStatus.FAILED);
+    }
+
+    @Test
+    void retriesVideoDownloadByTaskIdWithoutSubmittingAnotherPaidJob() {
+        GenerationBatch batch = batchWithCompletedSourceAndVideo();
+        GenerationAttempt textAttempt = succeededAttempt(
+                batch, AiCapability.TEXT, "text-model", textResult().output()
+        );
+        OffsetDateTime submittedAt = OffsetDateTime.now().minusMinutes(5);
+        GenerationAttempt videoAttempt = GenerationAttempt.start(
+                batch.id(), 1, AiCapability.VIDEO, "gemini", "veo-3.1", "b".repeat(64)
+        );
+        videoAttempt.markSubmitted("task-123", "request-123", submittedAt);
+        videoAttempt.markProcessing();
+        videoAttempt.markProviderSucceeded("task-123", "request-123", submittedAt.plusDays(2));
+        videoAttempt.markDownloadFailed("Temporary storage failure", OffsetDateTime.now().minusSeconds(1));
+        RecoverableVideoProviderClient.VideoArtifactReference artifact =
+                new RecoverableVideoProviderClient.VideoArtifactReference(
+                        "task-123",
+                        "request-456",
+                        "https://generativelanguage.googleapis.com/video/task-123",
+                        submittedAt.plusDays(2)
+                );
+
+        when(contentRepository.findGenerationIndexesByBatchId(batch.id())).thenReturn(List.of());
+        when(generatedContentFinalizer.reconcileCompletedCount(batch.id(), 0)).thenReturn(batch);
+        when(generationBatchRepository.findOneById(batch.id())).thenReturn(Optional.of(batch));
+        when(generationAttemptRepository
+                .findFirstByBatchIdAndGenerationIndexAndCapabilityAndPromptHashAndStatusOrderByCreatedAtDesc(
+                        eq(batch.id()), eq(1), any(), anyString(), eq(GenerationAttemptStatus.SUCCEEDED)
+                )).thenAnswer(invocation -> invocation.<AiCapability>getArgument(2) == AiCapability.TEXT
+                        ? Optional.of(textAttempt)
+                        : Optional.empty());
+        when(generationAttemptRepository
+                .findFirstByBatchIdAndGenerationIndexAndCapabilityAndPromptHashAndStatusInOrderByCreatedAtDesc(
+                        eq(batch.id()), eq(1), eq(AiCapability.VIDEO), anyString(), any()
+                )).thenReturn(Optional.of(videoAttempt));
+        when(aiProviderFactory.findRecoverableVideo("gemini"))
+                .thenReturn(Optional.of(recoverableVideoProviderClient));
+        when(recoverableVideoProviderClient.resolveCompletedVideo(
+                "task-123", "request-123", submittedAt
+        )).thenReturn(artifact);
+        when(recoverableVideoProviderClient.downloadVideo(artifact))
+                .thenReturn(new AiGenerationResult.GeneratedMedia("video/mp4", new byte[]{0, 0, 0, 24}));
+        when(mediaStorage.store(eq(MediaType.VIDEO), eq("video/mp4"), any(byte[].class)))
+                .thenReturn(new StoredMedia("generated/video/task-123.mp4", MediaType.VIDEO, "video/mp4"));
+        when(generationAttemptRepository.saveAndFlush(any(GenerationAttempt.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(generatedContentFinalizer.storeGeneratedContent(eq(batch.id()), eq(1), any()))
+                .thenAnswer(invocation -> {
+                    batch.recordCompletedContent();
+                    return true;
+                });
+
+        job.start(batch.id());
+
+        verify(recoverableVideoProviderClient, never()).submitVideo(any());
+        verify(recoverableVideoProviderClient).resolveCompletedVideo(
+                "task-123", "request-123", submittedAt
+        );
+        verify(recoverableVideoProviderClient).downloadVideo(artifact);
+        verifyNoInteractions(generationBudgetPolicy);
+        assertThat(videoAttempt.status()).isEqualTo(GenerationAttemptStatus.SUCCEEDED);
+        assertThat(videoAttempt.storageKey()).isEqualTo("generated/video/task-123.mp4");
+    }
+
+    @Test
+    void expiredVideoArtifactWaitsForConsentWithoutCallingProvider() {
+        GenerationBatch batch = batchWithCompletedSourceAndVideo();
+        GenerationAttempt textAttempt = succeededAttempt(
+                batch, AiCapability.TEXT, "text-model", textResult().output()
+        );
+        OffsetDateTime submittedAt = OffsetDateTime.now().minusDays(3);
+        GenerationAttempt videoAttempt = GenerationAttempt.start(
+                batch.id(), 1, AiCapability.VIDEO, "gemini", "veo-3.1", "c".repeat(64)
+        );
+        videoAttempt.markSubmitted("task-expired", null, submittedAt);
+        videoAttempt.markProcessing();
+        videoAttempt.markProviderSucceeded("task-expired", null, submittedAt.plusDays(2));
+        videoAttempt.markDownloadFailed("Temporary download failure", OffsetDateTime.now().minusDays(1));
+
+        when(contentRepository.findGenerationIndexesByBatchId(batch.id())).thenReturn(List.of());
+        when(generatedContentFinalizer.reconcileCompletedCount(batch.id(), 0)).thenReturn(batch);
+        when(generationBatchRepository.findOneById(batch.id())).thenReturn(Optional.of(batch));
+        when(generationAttemptRepository
+                .findFirstByBatchIdAndGenerationIndexAndCapabilityAndPromptHashAndStatusOrderByCreatedAtDesc(
+                        eq(batch.id()), eq(1), any(), anyString(), eq(GenerationAttemptStatus.SUCCEEDED)
+                )).thenAnswer(invocation -> invocation.<AiCapability>getArgument(2) == AiCapability.TEXT
+                        ? Optional.of(textAttempt)
+                        : Optional.empty());
+        when(generationAttemptRepository
+                .findFirstByBatchIdAndGenerationIndexAndCapabilityAndPromptHashAndStatusInOrderByCreatedAtDesc(
+                        eq(batch.id()), eq(1), eq(AiCapability.VIDEO), anyString(), any()
+                )).thenReturn(Optional.of(videoAttempt));
+        when(generationAttemptRepository.saveAndFlush(any(GenerationAttempt.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        job.start(batch.id());
+
+        assertThat(videoAttempt.status())
+                .isEqualTo(GenerationAttemptStatus.AWAITING_REGENERATION_CONSENT);
+        verifyNoInteractions(recoverableVideoProviderClient, generationBudgetPolicy, mediaStorage);
+        verify(generatedContentFinalizer, never()).storeGeneratedContent(any(), anyInt(), any());
+    }
+
+    @Test
     void ordersSourcesBeforeBuildingPrompt() {
         GenerationBatch batch = GenerationBatch.create(
                 "Ordered sources",
@@ -182,6 +355,7 @@ class GenerationBatchJobTest {
                 ContentType.POST,
                 1,
                 AiModelSelection.required("mock", "text-model", "Text"),
+                null,
                 null,
                 null,
                 null,
@@ -385,6 +559,7 @@ class GenerationBatchJobTest {
                 null,
                 null,
                 null,
+                null,
                 1
         );
         batch.addLinkSource("https://example.com/source");
@@ -404,6 +579,7 @@ class GenerationBatchJobTest {
                 AiModelSelection.required("mock", "image-model", "image"),
                 null,
                 null,
+                null,
                 1
         );
         batch.addLinkSource("https://example.com/source");
@@ -411,6 +587,28 @@ class GenerationBatchJobTest {
         source.startProcessing();
         source.complete("Previously extracted source text");
         batch.markFailed("first media download failed");
+        batch.retry();
+        return batch;
+    }
+
+    private static GenerationBatch batchWithCompletedSourceAndVideo() {
+        GenerationBatch batch = GenerationBatch.create(
+                "Video content",
+                Platform.LINKEDIN,
+                ContentType.POST,
+                1,
+                AiModelSelection.required("mock", "text-model", "Text"),
+                null,
+                AiModelSelection.required("gemini", "veo-3.1", "video"),
+                8,
+                null,
+                1
+        );
+        batch.addLinkSource("https://example.com/source");
+        ContentSource source = batch.sources().getFirst();
+        source.startProcessing();
+        source.complete("Previously extracted source text");
+        batch.markFailed("video download failed");
         batch.retry();
         return batch;
     }

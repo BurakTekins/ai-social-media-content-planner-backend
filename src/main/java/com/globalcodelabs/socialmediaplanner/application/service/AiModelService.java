@@ -2,6 +2,7 @@ package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.infrastructure.aimodel.ModelData;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderFactory;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoModelRegistry;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiModelCache;
@@ -34,6 +35,7 @@ public class AiModelService {
 
     private final AiModelCacheRepository aiModelCacheRepository;
     private final AiProviderFactory aiProviderFactory;
+    private final VideoModelRegistry videoModelRegistry;
 
     @Transactional(readOnly = true)
     public List<AiModelCache> findAll(AiCapability capability, String provider) {
@@ -44,7 +46,18 @@ public class AiModelService {
                 .filter(model -> aiProviderFactory.supports(
                         model.providerName(), model.capability()
                 ))
+                .filter(model -> model.capability() != AiCapability.VIDEO
+                        || videoModelRegistry.find(model.providerName(), model.modelId()).isPresent())
                 .toList();
+    }
+
+    public List<Integer> supportedVideoDurations(AiModelCache model) {
+        if (model.capability() != AiCapability.VIDEO) {
+            return List.of();
+        }
+        return videoModelRegistry.find(model.providerName(), model.modelId())
+                .map(VideoModelRegistry.VideoModelSpec::supportedDurationSeconds)
+                .orElseGet(List::of);
     }
 
     @Transactional

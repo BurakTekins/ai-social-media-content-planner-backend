@@ -7,8 +7,8 @@ import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationResul
 import com.globalcodelabs.socialmediaplanner.infrastructure.extraction.DefaultSourceTextExtractor;
 import com.globalcodelabs.socialmediaplanner.infrastructure.storage.LocalMediaStorage;
 import com.globalcodelabs.socialmediaplanner.infrastructure.storage.StoredMedia;
-import com.globalcodelabs.socialmediaplanner.infrastructure.scheduler.GenerationBatchJob;
 import com.globalcodelabs.socialmediaplanner.application.service.GeneratedContentFinalizer;
+import com.globalcodelabs.socialmediaplanner.application.service.GenerationBudgetPolicy;
 import com.globalcodelabs.socialmediaplanner.common.exception.ApiCredentialUnavailableException;
 import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponseException;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
@@ -29,6 +29,10 @@ import com.globalcodelabs.socialmediaplanner.domain.repository.ContentRepository
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationAttemptRepository;
 import com.globalcodelabs.socialmediaplanner.domain.repository.GenerationBatchRepository;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderFactory;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.RecoverableVideoProviderClient;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoArtifactExpiredException;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoArtifactRecoveryPolicy;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoProviderTaskFailedException;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.media.MediaContent;
 import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.media.MediaContentLoader;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +45,7 @@ import org.springframework.web.client.RestClientResponseException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -57,7 +62,21 @@ public class GenerationBatchJob {
 
     private static final String JOB_NAME = "batch-generation";
     private static final List<GenerationAttemptStatus> IN_FLIGHT_ATTEMPT_STATUSES = List.of(
-            GenerationAttemptStatus.STARTED
+            GenerationAttemptStatus.STARTED,
+            GenerationAttemptStatus.SUBMITTED,
+            GenerationAttemptStatus.PROCESSING,
+            GenerationAttemptStatus.PROVIDER_SUCCEEDED,
+            GenerationAttemptStatus.DOWNLOAD_FAILED,
+            GenerationAttemptStatus.DOWNLOADED,
+            GenerationAttemptStatus.AWAITING_REGENERATION_CONSENT
+    );
+    private static final List<GenerationAttemptStatus> RECOVERABLE_VIDEO_ATTEMPT_STATUSES = List.of(
+            GenerationAttemptStatus.SUBMITTED,
+            GenerationAttemptStatus.PROCESSING,
+            GenerationAttemptStatus.PROVIDER_SUCCEEDED,
+            GenerationAttemptStatus.DOWNLOAD_FAILED,
+            GenerationAttemptStatus.DOWNLOADED,
+            GenerationAttemptStatus.AWAITING_REGENERATION_CONSENT
     );
     private static final List<ContentAngle> CONTENT_ANGLES = List.of(
             new ContentAngle(
@@ -90,18 +109,32 @@ public class GenerationBatchJob {
     private final AiProviderFactory aiProviderFactory;
     private final MediaContentLoader mediaContentLoader;
     private final LocalMediaStorage mediaStorage;
+    private final GenerationBudgetPolicy generationBudgetPolicy;
+    private final VideoArtifactRecoveryPolicy videoArtifactRecoveryPolicy;
     private final ObjectMapper objectMapper;
 
     @Async("generationTaskExecutor")
     public void start(UUID batchId) {
+        execute(batchId, null);
+    }
+
+    @Async("generationTaskExecutor")
+    public void start(UUID batchId, int generationIndex) {
+        execute(batchId, generationIndex);
+    }
+
+    private void execute(UUID batchId, Integer targetGenerationIndex) {
         long startedAt = System.nanoTime();
         MdcUtil.putCorrelationId("job-" + JOB_NAME + "-" + UUID.randomUUID());
         MdcUtil.putJobName(JOB_NAME);
         MdcUtil.putBatchId(batchId.toString());
 
         try {
-            log.info("Generation batch job started");
-            process(batchId);
+            log.info("Generation batch job started targetGenerationIndex={}", targetGenerationIndex);
+            process(batchId, targetGenerationIndex);
+            if (targetGenerationIndex != null) {
+                markBatchFailedIfTargetedRunLeftMissingSlots(batchId);
+            }
             log.info("Generation batch job completed durationMs={}", elapsedMilliseconds(startedAt));
         } catch (ConcurrentGenerationException exception) {
             log.info("Duplicate generation batch job stopped without another provider call");
@@ -115,7 +148,7 @@ public class GenerationBatchJob {
         }
     }
 
-    private void process(UUID batchId) {
+    private void process(UUID batchId, Integer targetGenerationIndex) {
         Set<Integer> completedIndexes = new HashSet<>(
                 contentRepository.findGenerationIndexesByBatchId(batchId)
         );
@@ -124,6 +157,10 @@ public class GenerationBatchJob {
         GenerationBatch batch = loadBatch(batchId);
         if (batch.status() == GenerationBatchStatus.COMPLETED) {
             return;
+        }
+        if (targetGenerationIndex != null
+                && (targetGenerationIndex <= 0 || targetGenerationIndex > batch.requestedCount())) {
+            throw new IllegalArgumentException("Target generation index is outside the batch range");
         }
         List<ExtractedSource> extractedSources = extractSources(batch);
         if (extractedSources.isEmpty()) {
@@ -139,6 +176,9 @@ public class GenerationBatchJob {
         }
 
         for (int index = 1; index <= batch.requestedCount(); index++) {
+            if (targetGenerationIndex != null && index != targetGenerationIndex) {
+                continue;
+            }
             if (completedIndexes.contains(index)) {
                 continue;
             }
@@ -313,7 +353,11 @@ public class GenerationBatchJob {
                 batch,
                 generationIndex,
                 new AiGenerationRequest(
-                        provider, capability, buildMediaPrompt(content, mediaType), model
+                        provider,
+                        capability,
+                        buildMediaPrompt(content, mediaType),
+                        model,
+                        capability == AiCapability.VIDEO ? batch.videoDurationSeconds() : null
                 )
         );
 
@@ -373,6 +417,27 @@ public class GenerationBatchJob {
             return reuseCompletedAttempt(batch, generationIndex, request, reusable);
         }
 
+        if (request.capability() == AiCapability.VIDEO) {
+            GenerationAttempt recoverableAttempt = generationAttemptRepository
+                    .findFirstByBatchIdAndGenerationIndexAndCapabilityAndPromptHashAndStatusInOrderByCreatedAtDesc(
+                            batch.id(), generationIndex, request.capability(), promptHash,
+                            RECOVERABLE_VIDEO_ATTEMPT_STATUSES
+                    )
+                    .orElse(null);
+            if (recoverableAttempt != null) {
+                return recoverVideoAttempt(recoverableAttempt, request);
+            }
+        }
+
+        if (batch.retryCount() > 0) {
+            generationBudgetPolicy.validateSingleGeneration(
+                    request.capability(),
+                    request.provider(),
+                    request.model(),
+                    request.videoDurationSeconds()
+            );
+        }
+
         GenerationAttempt attempt = GenerationAttempt.start(
                 batch.id(), generationIndex, batch.retryCount(), request.capability(),
                 request.provider(), request.model(), promptHash
@@ -401,11 +466,34 @@ public class GenerationBatchJob {
         }
 
         AiGenerationResult result;
+        RecoverableVideoProviderClient recoverableVideoProviderClient = request.capability() == AiCapability.VIDEO
+                ? aiProviderFactory.findRecoverableVideo(request.provider()).orElse(null)
+                : null;
+        if (recoverableVideoProviderClient != null) {
+            return generateRecoverableVideo(
+                    attempt,
+                    request,
+                    recoverableVideoProviderClient
+            );
+        }
         try {
             result = aiProviderFactory.resolve(request.provider()).generate(request);
         } catch (RuntimeException exception) {
             failAttempt(attempt, exception);
             throw exception;
+        }
+        StoredMedia generatedMedia = null;
+        if (result.generatedMedia() != null) {
+            try {
+                generatedMedia = mediaStorage.store(
+                        request.capability() == AiCapability.IMAGE ? MediaType.IMAGE : MediaType.VIDEO,
+                        result.generatedMedia().contentType(),
+                        result.generatedMedia().bytes()
+                );
+            } catch (RuntimeException exception) {
+                failAttemptAfterKnownProviderResult(attempt, result, exception);
+                throw exception;
+            }
         }
         attempt.succeed(
                 result.capability(),
@@ -415,7 +503,172 @@ public class GenerationBatchJob {
                 result.providerRequestId(),
                 result.output()
         );
+        if (generatedMedia != null) {
+            attempt.recordStoredMedia(generatedMedia.storageKey(), generatedMedia.contentType());
+        }
+        try {
+            return generationAttemptRepository.saveAndFlush(attempt);
+        } catch (RuntimeException exception) {
+            if (generatedMedia != null) {
+                deleteStoredMedia(generatedMedia.storageKey());
+            }
+            throw exception;
+        }
+    }
+
+    private GenerationAttempt generateRecoverableVideo(
+            GenerationAttempt attempt,
+            AiGenerationRequest request,
+            RecoverableVideoProviderClient providerClient
+    ) {
+        RecoverableVideoProviderClient.VideoTaskSubmission submission;
+        try {
+            submission = providerClient.submitVideo(request);
+            attempt.markSubmitted(
+                    submission.taskId(),
+                    submission.providerRequestId(),
+                    submission.submittedAt()
+            );
+            generationAttemptRepository.saveAndFlush(attempt);
+            attempt.markProcessing();
+            generationAttemptRepository.saveAndFlush(attempt);
+        } catch (RuntimeException exception) {
+            if (attempt.status() == GenerationAttemptStatus.SUBMITTED) {
+                attempt.markProcessing();
+                scheduleDownloadRetry(attempt, exception);
+            } else if (attempt.status() == GenerationAttemptStatus.PROCESSING) {
+                scheduleDownloadRetry(attempt, exception);
+            } else {
+                failAttempt(attempt, exception);
+            }
+            throw exception;
+        }
+
+        RecoverableVideoProviderClient.VideoArtifactReference artifact;
+        try {
+            artifact = providerClient.awaitVideo(submission);
+            attempt.markProviderSucceeded(
+                    artifact.taskId(),
+                    artifact.providerRequestId(),
+                    artifact.expiresAt()
+            );
+            generationAttemptRepository.saveAndFlush(attempt);
+        } catch (VideoProviderTaskFailedException exception) {
+            failAttempt(attempt, exception);
+            throw exception;
+        } catch (RuntimeException exception) {
+            scheduleDownloadRetry(attempt, exception);
+            throw exception;
+        }
+        return downloadAndCompleteVideo(attempt, providerClient, artifact);
+    }
+
+    private GenerationAttempt recoverVideoAttempt(
+            GenerationAttempt attempt,
+            AiGenerationRequest request
+    ) {
+        if (attempt.status() == GenerationAttemptStatus.AWAITING_REGENERATION_CONSENT) {
+            throw new DomainException("Video regeneration requires explicit user consent");
+        }
+        if (attempt.status() == GenerationAttemptStatus.DOWNLOADED) {
+            attempt.completeDownloadedVideo("Provider video task completed");
+            return generationAttemptRepository.saveAndFlush(attempt);
+        }
+        if (attempt.artifactExpiresAt() != null
+                && !OffsetDateTime.now().isBefore(attempt.artifactExpiresAt())) {
+            awaitRegenerationConsent(attempt, "Provider video artifact retention window has expired");
+            throw new DomainException("Video regeneration requires explicit user consent");
+        }
+
+        RecoverableVideoProviderClient providerClient = aiProviderFactory
+                .findRecoverableVideo(request.provider())
+                .orElseThrow(() -> new DomainException(
+                        "Configured provider does not support video artifact recovery"
+                ));
+        if (attempt.status() == GenerationAttemptStatus.DOWNLOAD_FAILED
+                || attempt.status() == GenerationAttemptStatus.SUBMITTED
+                || attempt.status() == GenerationAttemptStatus.PROVIDER_SUCCEEDED) {
+            attempt.markProcessing();
+            generationAttemptRepository.saveAndFlush(attempt);
+        }
+
+        RecoverableVideoProviderClient.VideoArtifactReference artifact;
+        try {
+            artifact = providerClient.resolveCompletedVideo(
+                    attempt.providerResponseId(),
+                    attempt.providerRequestId(),
+                    attempt.providerSubmittedAt()
+            );
+        } catch (VideoArtifactExpiredException exception) {
+            awaitRegenerationConsent(attempt, errorMessage(exception));
+            throw exception;
+        } catch (VideoProviderTaskFailedException exception) {
+            failAttempt(attempt, exception);
+            throw exception;
+        } catch (RuntimeException exception) {
+            scheduleDownloadRetry(attempt, exception);
+            throw exception;
+        }
+
+        OffsetDateTime expiresAt = attempt.artifactExpiresAt() == null
+                ? artifact.expiresAt()
+                : attempt.artifactExpiresAt();
+        attempt.markProviderSucceeded(
+                artifact.taskId(),
+                artifact.providerRequestId(),
+                expiresAt
+        );
+        generationAttemptRepository.saveAndFlush(attempt);
+        return downloadAndCompleteVideo(attempt, providerClient, artifact);
+    }
+
+    private GenerationAttempt downloadAndCompleteVideo(
+            GenerationAttempt attempt,
+            RecoverableVideoProviderClient providerClient,
+            RecoverableVideoProviderClient.VideoArtifactReference artifact
+    ) {
+        StoredMedia storedMedia;
+        try {
+            AiGenerationResult.GeneratedMedia generatedMedia = providerClient.downloadVideo(artifact);
+            storedMedia = mediaStorage.store(
+                    MediaType.VIDEO,
+                    generatedMedia.contentType(),
+                    generatedMedia.bytes()
+            );
+        } catch (VideoArtifactExpiredException exception) {
+            awaitRegenerationConsent(attempt, errorMessage(exception));
+            throw exception;
+        } catch (RuntimeException exception) {
+            scheduleDownloadRetry(attempt, exception);
+            throw exception;
+        }
+        try {
+            attempt.markDownloaded(storedMedia.storageKey(), storedMedia.contentType());
+            generationAttemptRepository.saveAndFlush(attempt);
+        } catch (RuntimeException exception) {
+            deleteStoredMedia(storedMedia.storageKey());
+            throw exception;
+        }
+        attempt.completeDownloadedVideo("Provider video task completed");
         return generationAttemptRepository.saveAndFlush(attempt);
+    }
+
+    private void scheduleDownloadRetry(GenerationAttempt attempt, RuntimeException failure) {
+        if (attempt.artifactExpiresAt() != null
+                && !OffsetDateTime.now().isBefore(attempt.artifactExpiresAt())) {
+            awaitRegenerationConsent(attempt, "Provider video artifact retention window has expired");
+            return;
+        }
+        attempt.markDownloadFailed(
+                errorMessage(failure),
+                videoArtifactRecoveryPolicy.nextRetryAt(attempt.downloadRetryCount())
+        );
+        generationAttemptRepository.saveAndFlush(attempt);
+    }
+
+    private void awaitRegenerationConsent(GenerationAttempt attempt, String reason) {
+        attempt.awaitRegenerationConsent(reason);
+        generationAttemptRepository.saveAndFlush(attempt);
     }
 
     private GenerationAttempt reuseCompletedAttempt(
@@ -622,6 +875,15 @@ public class GenerationBatchJob {
         });
     }
 
+    private void markBatchFailedIfTargetedRunLeftMissingSlots(UUID batchId) {
+        generationBatchRepository.findOneById(batchId).ifPresent(batch -> {
+            if (batch.status() == GenerationBatchStatus.IN_PROGRESS) {
+                batch.markFailed("Remaining generation slots require separate retry or consent");
+                generationBatchRepository.save(batch);
+            }
+        });
+    }
+
     private void failAttempt(GenerationAttempt attempt, RuntimeException failure) {
         try {
             attempt.fail(
@@ -633,6 +895,25 @@ public class GenerationBatchJob {
             generationAttemptRepository.saveAndFlush(attempt);
         } catch (RuntimeException persistenceFailure) {
             log.error("Could not persist failed AI generation attempt attemptId={}",
+                    attempt.id(), persistenceFailure);
+        }
+    }
+
+    private void failAttemptAfterKnownProviderResult(
+            GenerationAttempt attempt,
+            AiGenerationResult result,
+            RuntimeException failure
+    ) {
+        try {
+            attempt.fail(
+                    errorMessage(failure),
+                    false,
+                    result.providerResponseId(),
+                    result.providerRequestId()
+            );
+            generationAttemptRepository.saveAndFlush(attempt);
+        } catch (RuntimeException persistenceFailure) {
+            log.error("Could not persist failed generated media attempt attemptId={}",
                     attempt.id(), persistenceFailure);
         }
     }

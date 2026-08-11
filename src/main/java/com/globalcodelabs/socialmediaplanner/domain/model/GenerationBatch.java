@@ -77,6 +77,9 @@ public class GenerationBatch {
     @Column(name = "include_video", nullable = false)
     private boolean includeVideo;
 
+    @Column(name = "video_duration_seconds")
+    private Integer videoDurationSeconds;
+
     @Embedded
     @AttributeOverrides({
             @AttributeOverride(name = "provider", column = @Column(name = "text_provider", nullable = false)),
@@ -129,6 +132,7 @@ public class GenerationBatch {
             AiModelSelection textModelSelection,
             AiModelSelection imageModelSelection,
             AiModelSelection videoModelSelection,
+            Integer videoDurationSeconds,
             GenerationStrategy requestedStrategy,
             int sourceCount
     ) {
@@ -161,6 +165,8 @@ public class GenerationBatch {
         this.retryCount = 0;
         this.includeImage = imageModelSelection != null;
         this.includeVideo = videoModelSelection != null;
+        validateVideoDuration(videoModelSelection, videoDurationSeconds);
+        this.videoDurationSeconds = videoDurationSeconds;
         this.textModelSelection = Objects.requireNonNull(
                 textModelSelection,
                 "Text model selection cannot be null"
@@ -182,12 +188,14 @@ public class GenerationBatch {
             AiModelSelection textModelSelection,
             AiModelSelection imageModelSelection,
             AiModelSelection videoModelSelection,
+            Integer videoDurationSeconds,
             GenerationStrategy requestedStrategy,
             int sourceCount
     ) {
         return new GenerationBatch(
                 title, platform, contentType, requestedCount,
                 textModelSelection, imageModelSelection, videoModelSelection,
+                videoDurationSeconds,
                 requestedStrategy, sourceCount
         );
     }
@@ -286,6 +294,18 @@ public class GenerationBatch {
 
     private static String normalizedOptionalValue(String value) {
         return DomainValidation.normalizeOptionalText(value);
+    }
+
+    private static void validateVideoDuration(
+            AiModelSelection videoModelSelection,
+            Integer videoDurationSeconds
+    ) {
+        if (videoModelSelection == null && videoDurationSeconds != null) {
+            throw new DomainException("Video duration must be empty when video generation is disabled");
+        }
+        if (videoModelSelection != null && (videoDurationSeconds == null || videoDurationSeconds <= 0)) {
+            throw new DomainException("Video duration is required when video generation is enabled");
+        }
     }
 
 }

@@ -25,7 +25,10 @@ public class AiModelController {
     ) {
         return aiModelService.findAll(capability, provider)
                 .stream()
-                .map(AiModelResponse::from)
+                .map(model -> AiModelResponse.from(
+                        model,
+                        aiModelService.supportedVideoDurations(model)
+                ))
                 .toList();
     }
 }

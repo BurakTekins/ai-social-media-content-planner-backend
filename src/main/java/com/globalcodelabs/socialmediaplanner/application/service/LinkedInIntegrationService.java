@@ -1,8 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.application.command.ConnectSocialCredentialCommand;
-import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialService;
-import com.globalcodelabs.socialmediaplanner.application.service.ResolvedApiCredential;
 import com.globalcodelabs.socialmediaplanner.common.exception.OAuthConnectionException;
 import com.globalcodelabs.socialmediaplanner.domain.model.ApiCredential;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.OAuthStateStore;
@@ -11,7 +9,6 @@ import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.linkedin.Linke
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.OffsetDateTime;
@@ -39,25 +36,19 @@ public class LinkedInIntegrationService {
     }
 
     public ConnectionResult complete(String code, String state) {
-        requireCode(code);
+        SocialIntegrationSupport.requireCode(code, "LinkedIn");
         stateStore.consume(PROVIDER, state);
         LinkedInOAuthClient.TokenResponse token;
         try {
             token = client.exchange(code);
-        } catch (RestClientResponseException exception) {
-            throw tokenExchangeException(exception);
         } catch (RestClientException exception) {
-            throw new OAuthConnectionException(
-                    OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
-                    "LinkedIn erişim anahtarı alınamadı",
-                    exception
-            );
+            throw SocialIntegrationSupport.tokenExchangeException("LinkedIn", exception);
         }
         LinkedInOAuthClient.UserInfo user;
         try {
             user = client.userInfo(token.accessToken());
         } catch (RestClientException exception) {
-            throw accountLookupException(exception);
+            throw SocialIntegrationSupport.accountLookupException("LinkedIn", exception);
         }
         OffsetDateTime now = OffsetDateTime.now();
         ApiCredential credential = credentialService.connectSocialAccount(new ConnectSocialCredentialCommand(
@@ -79,7 +70,7 @@ public class LinkedInIntegrationService {
         try {
             user = client.userInfo(credential.accessToken());
         } catch (RestClientException exception) {
-            throw accountLookupException(exception);
+            throw SocialIntegrationSupport.accountLookupException("LinkedIn", exception);
         }
         String accountId = "urn:li:person:" + user.sub();
         if (!accountId.equals(credential.accountIdentifier())) {
@@ -92,42 +83,11 @@ public class LinkedInIntegrationService {
     }
 
     public String frontendRedirectUri(String status, String errorCode) {
-        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(properties.requireFrontendRedirectUri())
-                .queryParam("linkedinConnection", status);
-        if (errorCode != null) builder.queryParam("errorCode", errorCode);
-        return builder.build().encode().toUriString();
-    }
-
-    private static void requireCode(String code) {
-        if (code == null || code.isBlank()) {
-            throw new OAuthConnectionException(
-                    OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
-                    "LinkedIn hesap bağlantısı tamamlanamadı"
-            );
-        }
-    }
-
-    private static OAuthConnectionException tokenExchangeException(RestClientResponseException exception) {
-        String errorCode = exception.getStatusCode().value() == 401
-                ? OAuthConnectionException.CONFIGURATION_ERROR
-                : OAuthConnectionException.TOKEN_EXCHANGE_FAILED;
-        String message = errorCode.equals(OAuthConnectionException.CONFIGURATION_ERROR)
-                ? "LinkedIn uygulama yapılandırması geçersiz"
-                : "LinkedIn erişim anahtarı alınamadı";
-        return new OAuthConnectionException(errorCode, message, exception);
-    }
-
-    private static OAuthConnectionException accountLookupException(RestClientException exception) {
-        boolean permissionMissing = exception instanceof RestClientResponseException response
-                && (response.getStatusCode().value() == 401 || response.getStatusCode().value() == 403);
-        return new OAuthConnectionException(
-                permissionMissing
-                        ? OAuthConnectionException.PERMISSION_MISSING
-                        : OAuthConnectionException.ACCOUNT_LOOKUP_FAILED,
-                permissionMissing
-                        ? "LinkedIn hesabı için gerekli izinler bulunmuyor"
-                        : "LinkedIn hesap bilgileri alınamadı",
-                exception
+        return SocialIntegrationSupport.frontendRedirectUri(
+                properties.requireFrontendRedirectUri(),
+                "linkedinConnection",
+                status,
+                errorCode
         );
     }
 

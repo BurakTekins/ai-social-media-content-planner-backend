@@ -16,6 +16,7 @@ import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.Generation
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBatchPageResponse;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBudgetResponse;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationBudgetEstimateResponse;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.GenerationAttemptResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -79,7 +80,12 @@ public class GenerationBatchController {
                         request.includeImage(),
                         request.includeVideo(),
                         request.textModel().provider(),
-                        request.textModel().model()
+                        request.textModel().model(),
+                        provider(request.imageModel()),
+                        model(request.imageModel()),
+                        provider(request.videoModel()),
+                        model(request.videoModel()),
+                        request.videoDurationSeconds()
                 ))
         );
     }
@@ -89,6 +95,24 @@ public class GenerationBatchController {
         GenerationBatch batch = generationBatchService.retry(batchId);
         startProcessing(batch);
         return ResponseEntity.accepted().body(GenerationBatchResponse.from(batch));
+    }
+
+    @GetMapping("/{batchId}/attempts")
+    public List<GenerationAttemptResponse> listAttempts(@PathVariable UUID batchId) {
+        return generationBatchService.listAttempts(batchId).stream()
+                .map(GenerationAttemptResponse::from)
+                .toList();
+    }
+
+    @PostMapping("/{batchId}/attempts/{attemptId}/regeneration-consent")
+    public ResponseEntity<GenerationBatchResponse> approveVideoRegeneration(
+            @PathVariable UUID batchId,
+            @PathVariable UUID attemptId
+    ) {
+        GenerationBatchService.VideoRegenerationApproval approval =
+                generationBatchService.approveVideoRegeneration(batchId, attemptId);
+        startProcessing(approval.batch(), approval.generationIndex());
+        return ResponseEntity.accepted().body(GenerationBatchResponse.from(approval.batch()));
     }
 
     @GetMapping
@@ -122,6 +146,7 @@ public class GenerationBatchController {
                 request.textModel().provider(), request.textModel().model(),
                 provider(request.imageModel()), model(request.imageModel()),
                 provider(request.videoModel()), model(request.videoModel()),
+                request.videoDurationSeconds(),
                 request.generationStrategy(),
                 request.links(), documents
         );
@@ -130,6 +155,15 @@ public class GenerationBatchController {
     private void startProcessing(GenerationBatch batch) {
         try {
             generationBatchProcessingService.start(batch.id());
+        } catch (RuntimeException exception) {
+            generationBatchService.markDispatchFailed(batch.id());
+            throw exception;
+        }
+    }
+
+    private void startProcessing(GenerationBatch batch, int generationIndex) {
+        try {
+            generationBatchProcessingService.start(batch.id(), generationIndex);
         } catch (RuntimeException exception) {
             generationBatchService.markDispatchFailed(batch.id());
             throw exception;

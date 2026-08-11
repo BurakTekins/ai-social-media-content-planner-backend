@@ -1,7 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.application.command.RefreshApiCredentialCommand;
-import com.globalcodelabs.socialmediaplanner.application.service.ResolvedApiCredential;
 import com.globalcodelabs.socialmediaplanner.common.exception.OAuthConnectionException;
 import com.globalcodelabs.socialmediaplanner.domain.model.ApiCredential;
 import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
@@ -13,7 +12,6 @@ import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.x.XOAuthClient
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClientException;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -132,12 +130,6 @@ public class SocialCredentialRefreshService {
                     credential.providerName(), credential.credentialId());
         } catch (OAuthConnectionException exception) {
             throw exception;
-        } catch (RestClientException exception) {
-            throw new OAuthConnectionException(
-                    OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
-                    "Sosyal platform erişim anahtarı otomatik yenilenemedi",
-                    exception
-            );
         } catch (RuntimeException exception) {
             throw new OAuthConnectionException(
                     OAuthConnectionException.TOKEN_EXCHANGE_FAILED,

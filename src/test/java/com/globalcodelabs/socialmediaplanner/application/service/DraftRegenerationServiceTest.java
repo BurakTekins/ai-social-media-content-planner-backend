@@ -8,6 +8,7 @@ import com.globalcodelabs.socialmediaplanner.infrastructure.publishing.media.Med
 import com.globalcodelabs.socialmediaplanner.infrastructure.storage.LocalMediaStorage;
 import com.globalcodelabs.socialmediaplanner.application.service.ContentService;
 import com.globalcodelabs.socialmediaplanner.common.exception.ContentOperationNotAllowedException;
+import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.Content;
 import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
@@ -26,9 +27,12 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,6 +43,9 @@ class DraftRegenerationServiceTest {
 
     @Mock
     private AiProviderFactory aiProviderFactory;
+
+    @Mock
+    private GenerationBudgetPolicy generationBudgetPolicy;
 
     @Mock
     private MediaContentLoader generatedMediaContentLoader;
@@ -55,6 +62,7 @@ class DraftRegenerationServiceTest {
     void setUp() {
         draftRegenerationService = new DraftRegenerationService(
                 contentService,
+                generationBudgetPolicy,
                 aiProviderFactory,
                 generatedMediaContentLoader,
                 mediaStorage,
@@ -95,6 +103,12 @@ class DraftRegenerationServiceTest {
         );
 
         assertThat(result).isSameAs(content);
+        verify(generationBudgetPolicy).validateSingleGeneration(
+                AiCapability.TEXT,
+                "openai",
+                "text-model",
+                null
+        );
         verify(contentService).applyGeneratedText(
                 contentId,
                 "New draft",
@@ -102,6 +116,24 @@ class DraftRegenerationServiceTest {
                 "openai",
                 "text-model"
         );
+    }
+
+    @Test
+    void blocksDraftRegenerationBeforeResolvingProviderWhenBudgetIsExceeded() {
+        Content content = draft();
+        when(contentService.findById(content.id())).thenReturn(content);
+        when(aiProviderFactory.supports("openai", AiCapability.TEXT)).thenReturn(true);
+        doThrow(new DomainException("Estimated generation cost exceeds configured budget limit"))
+                .when(generationBudgetPolicy)
+                .validateSingleGeneration(AiCapability.TEXT, "openai", "text-model", null);
+
+        assertThatThrownBy(() -> draftRegenerationService.regenerateText(
+                content.id(), "openai", "text-model"
+        )).isInstanceOf(DomainException.class)
+                .hasMessageContaining("budget limit");
+
+        verify(aiProviderFactory, never()).resolve("openai");
+        verify(aiProviderClient, never()).generate(any());
     }
 
     @Test
