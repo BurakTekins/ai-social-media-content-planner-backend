@@ -34,7 +34,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class TwitterPlatformClient implements SocialPlatformClient {
 
-    private static final String PROVIDER_NAME = "twitter";
+    private static final String PROVIDER_NAME = Platform.TWITTER.providerName();
     private static final String VIDEO_MP4 = "video/mp4";
     private static final Set<String> SUPPORTED_IMAGE_TYPES = Set.of(
             "image/jpeg",

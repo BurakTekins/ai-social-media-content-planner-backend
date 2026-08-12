@@ -2,8 +2,6 @@ package com.globalcodelabs.socialmediaplanner.common.exception;
 
 import org.springframework.http.HttpStatus;
 
-import java.util.Arrays;
-
 public enum ErrorCode {
     VALIDATION_FAILED(HttpStatus.BAD_REQUEST, "Request validation failed"),
     INVALID_ARGUMENT(HttpStatus.BAD_REQUEST, "Request argument is invalid"),
@@ -59,10 +57,4 @@ public enum ErrorCode {
         return defaultMessage;
     }
 
-    public static ErrorCode fromCode(String code) {
-        return Arrays.stream(values())
-                .filter(errorCode -> errorCode.code.equals(code))
-                .findFirst()
-                .orElse(OAUTH_CONNECTION_FAILED);
-    }
 }

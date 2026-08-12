@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.controller;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.OAuthConnectionException;
+import com.globalcodelabs.socialmediaplanner.common.exception.ErrorCode;
 import org.slf4j.Logger;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -42,7 +43,7 @@ final class OAuthControllerSupport {
             logOAuthFailure(provider, errorCode, exception, log);
         } catch (IllegalStateException exception) {
             status = "error";
-            errorCode = OAuthConnectionException.CONFIGURATION_ERROR;
+            errorCode = ErrorCode.OAUTH_CONFIGURATION_ERROR.code();
             log.error("OAuth callback configuration failed provider={} errorCode={} errorType={}",
                     provider, errorCode, exception.getClass().getSimpleName(), exception);
         } catch (RuntimeException exception) {

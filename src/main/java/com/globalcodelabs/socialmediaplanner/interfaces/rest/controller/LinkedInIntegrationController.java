@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.controller;
 
 import com.globalcodelabs.socialmediaplanner.application.service.LinkedInIntegrationService;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -27,7 +28,7 @@ public class LinkedInIntegrationController {
                                          @RequestParam(required = false) String state,
                                          @RequestParam(required = false) String error) {
         return OAuthControllerSupport.callback(
-                "linkedin",
+                Platform.LINKEDIN.providerName(),
                 error,
                 () -> service.complete(code, state),
                 service::frontendRedirectUri,

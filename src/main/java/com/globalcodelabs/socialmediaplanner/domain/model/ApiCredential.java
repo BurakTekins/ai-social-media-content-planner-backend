@@ -2,7 +2,9 @@ package com.globalcodelabs.socialmediaplanner.domain.model;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
 import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialValidationStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.domain.policy.DomainValidation;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -237,14 +239,8 @@ public class ApiCredential {
             String providerName
     ) {
         boolean supported = switch (credentialType) {
-            case AI_PROVIDER -> providerName.equals("openai")
-                    || providerName.equals("anthropic")
-                    || providerName.equals("gemini")
-                    || providerName.equals("deepseek")
-                    || providerName.equals("qwen");
-            case SOCIAL_PLATFORM -> providerName.equals("linkedin")
-                    || providerName.equals("instagram")
-                    || providerName.equals("twitter");
+            case AI_PROVIDER -> AiProvider.findCanonical(providerName).isPresent();
+            case SOCIAL_PLATFORM -> Platform.findByProviderName(providerName).isPresent();
         };
         if (!supported) {
             throw new DomainException(
@@ -271,7 +267,8 @@ public class ApiCredential {
     }
 
     private static String validateAccountIdentifier(String providerName, String accountIdentifier) {
-        boolean required = providerName.equals("linkedin") || providerName.equals("instagram");
+        boolean required = providerName.equals(Platform.LINKEDIN.providerName())
+                || providerName.equals(Platform.INSTAGRAM.providerName());
         if (accountIdentifier == null) {
             if (required) {
                 throw new DomainException("Account identifier is required for provider " + providerName);
@@ -282,7 +279,7 @@ public class ApiCredential {
             throw new DomainException("Account identifier cannot be blank");
         }
         String normalized = accountIdentifier.trim();
-        if (providerName.equals("twitter") && !normalized.matches("\\d+")) {
+        if (providerName.equals(Platform.TWITTER.providerName()) && !normalized.matches("\\d+")) {
             throw new DomainException("X account identifier must be a numeric user id");
         }
         return normalized;

@@ -2,6 +2,8 @@ package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.application.command.ConnectSocialCredentialCommand;
 import com.globalcodelabs.socialmediaplanner.common.exception.OAuthConnectionException;
+import com.globalcodelabs.socialmediaplanner.common.exception.ErrorCode;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.domain.model.ApiCredential;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.OAuthStateStore;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.linkedin.LinkedInOAuthClient;
@@ -18,7 +20,7 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class LinkedInIntegrationService {
-    private static final String PROVIDER = "linkedin";
+    private static final String PROVIDER = Platform.LINKEDIN.providerName();
     private final LinkedInOAuthProperties properties;
     private final LinkedInOAuthClient client;
     private final OAuthStateStore stateStore;
@@ -76,7 +78,7 @@ public class LinkedInIntegrationService {
         String accountId = "urn:li:person:" + user.sub();
         if (!accountId.equals(credential.accountIdentifier())) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.ACCOUNT_LOOKUP_FAILED,
+                    ErrorCode.OAUTH_ACCOUNT_LOOKUP_FAILED,
                     "Doğrulanan LinkedIn hesabı kayıtlı hesapla eşleşmiyor"
             );
         }

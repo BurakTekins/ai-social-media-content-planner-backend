@@ -26,7 +26,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 @Slf4j
@@ -128,7 +127,7 @@ public class PublishingService {
     }
 
     private void dispatch(ClaimedPublication publication) {
-        String providerName = providerName(publication.platform());
+        String providerName = publication.platform().providerName();
         MdcUtil.putProvider(providerName);
         try {
             ResolvedApiCredential credential;
@@ -191,7 +190,7 @@ public class PublishingService {
     }
 
     private void confirm(PendingConfirmation pending) {
-        String providerName = providerName(pending.platform());
+        String providerName = pending.platform().providerName();
         MdcUtil.putProvider(providerName);
         ResolvedApiCredential credential = null;
         try {
@@ -341,10 +340,6 @@ public class PublishingService {
                         media.mediaType(), media.storageKey(), media.publicUrl(), media.modelProvider()
                 )).toList()
         );
-    }
-
-    private static String providerName(Platform platform) {
-        return platform.name().toLowerCase(Locale.ROOT);
     }
 
     private static String safeErrorMessage(

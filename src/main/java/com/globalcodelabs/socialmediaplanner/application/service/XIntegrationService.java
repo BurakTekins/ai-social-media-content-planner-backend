@@ -2,6 +2,8 @@ package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.application.command.ConnectSocialCredentialCommand;
 import com.globalcodelabs.socialmediaplanner.common.exception.OAuthConnectionException;
+import com.globalcodelabs.socialmediaplanner.common.exception.ErrorCode;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.domain.model.ApiCredential;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.x.XOAuthClient;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.x.XOAuthProperties;
@@ -26,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class XIntegrationService {
 
-    private static final String PROVIDER_NAME = "twitter";
+    private static final String PROVIDER_NAME = Platform.TWITTER.providerName();
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final XOAuthProperties properties;
@@ -64,15 +66,15 @@ public class XIntegrationService {
         if (code == null || code.isBlank() || state == null || state.isBlank()) {
             throw new OAuthConnectionException(
                     state == null || state.isBlank()
-                            ? OAuthConnectionException.STATE_INVALID
-                            : OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
+                            ? ErrorCode.OAUTH_STATE_INVALID
+                            : ErrorCode.OAUTH_TOKEN_EXCHANGE_FAILED,
                     "X hesap bağlantısı tamamlanamadı"
             );
         }
         PendingAuthorization pending = pendingAuthorizations.remove(state);
         if (pending == null || pending.expiresAt().isBefore(Instant.now())) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.STATE_INVALID,
+                    ErrorCode.OAUTH_STATE_INVALID,
                     "X bağlantı oturumu geçersiz veya süresi doldu"
             );
         }
@@ -122,7 +124,7 @@ public class XIntegrationService {
             if (credential.accountIdentifier() != null
                     && !credential.accountIdentifier().equals(user.id())) {
                 throw new OAuthConnectionException(
-                        OAuthConnectionException.ACCOUNT_LOOKUP_FAILED,
+                        ErrorCode.OAUTH_ACCOUNT_LOOKUP_FAILED,
                         "Doğrulanan X hesabı kayıtlı hesapla eşleşmiyor"
                 );
             }

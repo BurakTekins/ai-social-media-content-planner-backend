@@ -183,7 +183,7 @@ public class PlatformPublishingFailureMapper {
                         : message;
             }
             StringBuilder reason = new StringBuilder("Platform request rejected provider=")
-                    .append(platform.name().toLowerCase(Locale.ROOT));
+                    .append(platform.providerName());
             if (httpStatus != null) {
                 reason.append(" HTTP ").append(httpStatus);
             }

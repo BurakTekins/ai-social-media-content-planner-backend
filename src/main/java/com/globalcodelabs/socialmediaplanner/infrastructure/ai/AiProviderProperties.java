@@ -1,8 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.ai;
 
-import jakarta.validation.constraints.NotBlank;
+import com.globalcodelabs.socialmediaplanner.infrastructure.IntegrationMode;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -19,9 +18,8 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "ai-provider")
 public class AiProviderProperties {
 
-    @NotBlank
-    @Pattern(regexp = "mock|real")
-    private String mode;
+    @NotNull
+    private IntegrationMode mode;
 
     @NotNull
     private Duration connectTimeout;

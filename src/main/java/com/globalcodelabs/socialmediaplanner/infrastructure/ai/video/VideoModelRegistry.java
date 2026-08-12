@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.ai.video;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -120,11 +121,7 @@ public class VideoModelRegistry {
         if (provider == null || provider.isBlank()) {
             throw new DomainException("Video provider cannot be blank");
         }
-        return switch (provider.trim().toLowerCase(Locale.ROOT)) {
-            case "google" -> "gemini";
-            case "alibaba" -> "qwen";
-            default -> provider.trim().toLowerCase(Locale.ROOT);
-        };
+        return AiProvider.canonicalize(provider);
     }
 
     private static String normalizeModel(String model) {

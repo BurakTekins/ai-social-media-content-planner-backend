@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.OAuthConnectionException;
+import com.globalcodelabs.socialmediaplanner.common.exception.ErrorCode;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -27,7 +28,7 @@ final class SocialIntegrationSupport {
     static void requireCode(String code, String provider) {
         if (code == null || code.isBlank()) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
+                    ErrorCode.OAUTH_TOKEN_EXCHANGE_FAILED,
                     provider + " hesap bağlantısı tamamlanamadı"
             );
         }
@@ -41,8 +42,8 @@ final class SocialIntegrationSupport {
                 && response.getStatusCode().value() == 401;
         return new OAuthConnectionException(
                 configurationError
-                        ? OAuthConnectionException.CONFIGURATION_ERROR
-                        : OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
+                        ? ErrorCode.OAUTH_CONFIGURATION_ERROR
+                        : ErrorCode.OAUTH_TOKEN_EXCHANGE_FAILED,
                 configurationError
                         ? provider + " uygulama yapılandırması geçersiz"
                         : provider + " erişim anahtarı alınamadı",
@@ -58,8 +59,8 @@ final class SocialIntegrationSupport {
                 && (response.getStatusCode().value() == 401 || response.getStatusCode().value() == 403);
         return new OAuthConnectionException(
                 permissionMissing
-                        ? OAuthConnectionException.PERMISSION_MISSING
-                        : OAuthConnectionException.ACCOUNT_LOOKUP_FAILED,
+                        ? ErrorCode.OAUTH_PERMISSION_MISSING
+                        : ErrorCode.OAUTH_ACCOUNT_LOOKUP_FAILED,
                 permissionMissing
                         ? provider + " hesabı için gerekli izinler bulunmuyor"
                         : provider + " hesap bilgileri alınamadı",

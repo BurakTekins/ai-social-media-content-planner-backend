@@ -2,8 +2,10 @@ package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.application.command.RefreshApiCredentialCommand;
 import com.globalcodelabs.socialmediaplanner.common.exception.OAuthConnectionException;
+import com.globalcodelabs.socialmediaplanner.common.exception.ErrorCode;
 import com.globalcodelabs.socialmediaplanner.domain.model.ApiCredential;
 import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.domain.repository.ApiCredentialRepository;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.OAuthRefreshProperties;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.instagram.InstagramOAuthClient;
@@ -93,10 +95,10 @@ public class SocialCredentialRefreshService {
         if (credential.expiresAt() == null) {
             return false;
         }
-        if (provider.equals("linkedin") && !hasRefreshToken(credential)) {
+        if (provider.equals(Platform.LINKEDIN.providerName()) && !hasRefreshToken(credential)) {
             return !credential.expiresAt().isAfter(now);
         }
-        Duration refreshBefore = provider.equals("instagram")
+        Duration refreshBefore = provider.equals(Platform.INSTAGRAM.providerName())
                 ? properties.getInstagramRefreshBefore()
                 : properties.getAccessTokenSkew();
         return !credential.expiresAt().isAfter(now.plus(refreshBefore));
@@ -109,14 +111,15 @@ public class SocialCredentialRefreshService {
     private void refresh(ResolvedApiCredential credential) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         try {
-            RefreshedTokens tokens = switch (credential.providerName()) {
-                case "twitter" -> refreshX(credential, now);
-                case "linkedin" -> refreshLinkedIn(credential, now);
-                case "instagram" -> refreshInstagram(credential, now);
-                default -> throw new OAuthConnectionException(
-                        OAuthConnectionException.CONFIGURATION_ERROR,
-                        "Sosyal platform token yenilemesi desteklenmiyor"
-                );
+            Platform platform = Platform.findByProviderName(credential.providerName())
+                    .orElseThrow(() -> new OAuthConnectionException(
+                            ErrorCode.OAUTH_CONFIGURATION_ERROR,
+                            "Sosyal platform token yenilemesi desteklenmiyor"
+                    ));
+            RefreshedTokens tokens = switch (platform) {
+                case TWITTER -> refreshX(credential, now);
+                case LINKEDIN -> refreshLinkedIn(credential, now);
+                case INSTAGRAM -> refreshInstagram(credential, now);
             };
             credentialService.refreshTokens(
                     credential.credentialId(),
@@ -133,7 +136,7 @@ public class SocialCredentialRefreshService {
             throw exception;
         } catch (RuntimeException exception) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
+                    ErrorCode.OAUTH_TOKEN_EXCHANGE_FAILED,
                     "Sosyal platform erişim anahtarı otomatik yenilenemedi",
                     exception
             );
@@ -169,7 +172,7 @@ public class SocialCredentialRefreshService {
     private RefreshedTokens refreshInstagram(ResolvedApiCredential credential, OffsetDateTime now) {
         if (credential.expiresAt() != null && !credential.expiresAt().isAfter(now)) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
+                    ErrorCode.OAUTH_TOKEN_EXCHANGE_FAILED,
                     "Instagram erişim anahtarının süresi dolmuş; hesabı yeniden bağlayın"
             );
         }
@@ -187,14 +190,14 @@ public class SocialCredentialRefreshService {
     private static void requireRefreshToken(ResolvedApiCredential credential, OffsetDateTime now) {
         if (credential.refreshToken() == null || credential.refreshToken().isBlank()) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.CONFIGURATION_ERROR,
+                    ErrorCode.OAUTH_CONFIGURATION_ERROR,
                     "Sosyal platform refresh token bulunamadı; hesabı yeniden bağlayın"
             );
         }
         if (credential.refreshTokenExpiresAt() != null
                 && !credential.refreshTokenExpiresAt().isAfter(now)) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
+                    ErrorCode.OAUTH_TOKEN_EXCHANGE_FAILED,
                     "Sosyal platform refresh token süresi dolmuş; hesabı yeniden bağlayın"
             );
         }
@@ -203,7 +206,7 @@ public class SocialCredentialRefreshService {
     private static OffsetDateTime expiresAt(OffsetDateTime now, Long expiresIn, String provider) {
         if (expiresIn == null || expiresIn <= 0) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.TOKEN_EXCHANGE_FAILED,
+                    ErrorCode.OAUTH_TOKEN_EXCHANGE_FAILED,
                     provider + " token yenileme yanıtında geçerlilik süresi bulunamadı"
             );
         }
@@ -213,7 +216,7 @@ public class SocialCredentialRefreshService {
     private static String normalize(String providerName) {
         if (providerName == null || providerName.isBlank()) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.CONFIGURATION_ERROR,
+                    ErrorCode.OAUTH_CONFIGURATION_ERROR,
                     "Sosyal platform adı bulunamadı"
             );
         }

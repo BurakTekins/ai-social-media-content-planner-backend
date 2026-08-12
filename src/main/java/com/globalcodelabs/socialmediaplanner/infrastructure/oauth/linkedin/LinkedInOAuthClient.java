@@ -2,6 +2,7 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.oauth.linkedin;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.OAuthClientSupport;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -15,7 +16,7 @@ import java.util.function.Supplier;
 @Component
 @Slf4j
 public class LinkedInOAuthClient {
-    private static final String PROVIDER = "linkedin";
+    private static final String PROVIDER = Platform.LINKEDIN.providerName();
 
     private final LinkedInOAuthProperties properties;
     private final RestClient restClient;

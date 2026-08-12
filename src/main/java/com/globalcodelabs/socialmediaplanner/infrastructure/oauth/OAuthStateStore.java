@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.oauth;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.OAuthConnectionException;
+import com.globalcodelabs.socialmediaplanner.common.exception.ErrorCode;
 import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;
@@ -26,14 +27,14 @@ public class OAuthStateStore {
     public void consume(String provider, String state) {
         if (state == null || state.isBlank()) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.STATE_INVALID,
+                    ErrorCode.OAUTH_STATE_INVALID,
                     "OAuth bağlantı oturumu geçersiz veya süresi doldu"
             );
         }
         PendingState pending = states.remove(key(provider, state));
         if (pending == null || pending.expiresAt().isBefore(Instant.now())) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.STATE_INVALID,
+                    ErrorCode.OAUTH_STATE_INVALID,
                     "OAuth bağlantı oturumu geçersiz veya süresi doldu"
             );
         }

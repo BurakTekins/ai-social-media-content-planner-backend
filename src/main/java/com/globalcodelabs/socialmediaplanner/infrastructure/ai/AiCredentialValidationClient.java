@@ -1,7 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.ai;
 
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiCredentialValidationResult;
 import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -24,11 +24,14 @@ public class AiCredentialValidationClient {
         MdcUtil.putProvider(providerName);
         try {
             log.info("AI credential validation started");
-            switch (providerName) {
-                case "openai", "deepseek", "qwen" -> validateBearerProvider(providerName, accessToken);
-                case "anthropic" -> validateAnthropic(accessToken);
-                case "gemini" -> validateGemini(accessToken);
-                default -> throw new IllegalArgumentException("Unsupported AI provider: " + providerName);
+            AiProvider provider = AiProvider.findCanonical(providerName)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Unsupported AI provider: " + providerName
+                    ));
+            switch (provider) {
+                case OPENAI, DEEPSEEK, QWEN -> validateBearerProvider(providerName, accessToken);
+                case ANTHROPIC -> validateAnthropic(accessToken);
+                case GEMINI -> validateGemini(accessToken);
             }
             log.info("AI credential validation completed durationMs={}", elapsedMilliseconds(startedAt));
             return AiCredentialValidationResult.succeeded();
@@ -67,7 +70,7 @@ public class AiCredentialValidationClient {
     }
 
     private void validateAnthropic(String accessToken) {
-        String baseUrl = properties.requireBaseUrl("anthropic");
+        String baseUrl = properties.requireBaseUrl(AiProvider.ANTHROPIC.canonicalName());
         restClientFactory.forBaseUrl(baseUrl)
                 .get()
                 .uri(restClientFactory.endpoint(baseUrl, "v1/models?limit=1"))
@@ -78,7 +81,7 @@ public class AiCredentialValidationClient {
     }
 
     private void validateGemini(String accessToken) {
-        String baseUrl = properties.requireBaseUrl("gemini");
+        String baseUrl = properties.requireBaseUrl(AiProvider.GEMINI.canonicalName());
         restClientFactory.forBaseUrl(baseUrl)
                 .get()
                 .uri(restClientFactory.endpoint(baseUrl, "models?pageSize=1"))

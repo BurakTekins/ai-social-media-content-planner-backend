@@ -3,6 +3,7 @@ package com.globalcodelabs.socialmediaplanner.application.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiModelCache;
 import com.globalcodelabs.socialmediaplanner.domain.repository.AiModelCacheRepository;
 import com.globalcodelabs.socialmediaplanner.infrastructure.budget.GenerationBudgetProperties;
@@ -13,7 +14,6 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.Locale;
 import java.util.Optional;
 
 @Service
@@ -290,12 +290,7 @@ public class GenerationBudgetPolicy {
     }
 
     private static String normalizeProvider(String provider) {
-        return switch (provider.trim().toLowerCase(Locale.ROOT)) {
-            case "claude" -> "anthropic";
-            case "google" -> "gemini";
-            case "alibaba" -> "qwen";
-            default -> provider.trim().toLowerCase(Locale.ROOT);
-        };
+        return AiProvider.canonicalize(provider);
     }
 
     private static BigDecimal tokenCost(int tokens, BigDecimal pricePerMillionTokens) {

@@ -2,6 +2,8 @@ package com.globalcodelabs.socialmediaplanner.application.service;
 
 import com.globalcodelabs.socialmediaplanner.application.command.ConnectSocialCredentialCommand;
 import com.globalcodelabs.socialmediaplanner.common.exception.OAuthConnectionException;
+import com.globalcodelabs.socialmediaplanner.common.exception.ErrorCode;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.domain.model.ApiCredential;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.OAuthStateStore;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.instagram.InstagramOAuthClient;
@@ -20,7 +22,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class InstagramIntegrationService {
-    private static final String PROVIDER = "instagram";
+    private static final String PROVIDER = Platform.INSTAGRAM.providerName();
     private final InstagramOAuthProperties properties;
     private final InstagramOAuthClient client;
     private final OAuthStateStore stateStore;
@@ -60,7 +62,7 @@ public class InstagramIntegrationService {
         String accountId = shortToken.userId();
         if (!accountId.equals(user.accountId())) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.ACCOUNT_LOOKUP_FAILED,
+                    ErrorCode.OAUTH_ACCOUNT_LOOKUP_FAILED,
                     "Instagram token hesabı ile doğrulanan hesap eşleşmiyor"
             );
         }
@@ -89,7 +91,7 @@ public class InstagramIntegrationService {
         }
         if (!user.accountId().equals(credential.accountIdentifier())) {
             throw new OAuthConnectionException(
-                    OAuthConnectionException.ACCOUNT_LOOKUP_FAILED,
+                    ErrorCode.OAUTH_ACCOUNT_LOOKUP_FAILED,
                     "Doğrulanan Instagram hesabı kayıtlı hesapla eşleşmiyor"
             );
         }

@@ -2,6 +2,7 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.oauth.instagram;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.globalcodelabs.socialmediaplanner.infrastructure.oauth.OAuthClientSupport;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -17,7 +18,7 @@ import java.util.function.Supplier;
 @Component
 @Slf4j
 public class InstagramOAuthClient {
-    private static final String PROVIDER = "instagram";
+    private static final String PROVIDER = Platform.INSTAGRAM.providerName();
 
     private final InstagramOAuthProperties properties;
     private final RestClient restClient;

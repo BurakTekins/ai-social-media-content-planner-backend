@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationRequest;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationResult;
 import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialService;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
 import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponseException;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiRestClientFactory;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderProperties;
@@ -30,7 +31,7 @@ import java.util.Set;
 @Component
 public class QwenProviderClient extends AbstractAiProviderClient implements RecoverableVideoProviderClient {
 
-    private static final String PROVIDER_NAME = "qwen";
+    private static final String PROVIDER_NAME = AiProvider.QWEN.canonicalName();
     private static final Set<String> VIDEO_DOWNLOAD_HOSTS = Set.of("aliyuncs.com");
     private static final Duration TASK_RETENTION = Duration.ofHours(24);
 

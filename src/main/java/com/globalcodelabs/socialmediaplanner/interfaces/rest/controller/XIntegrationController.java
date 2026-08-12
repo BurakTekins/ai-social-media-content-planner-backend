@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.controller;
 
 import com.globalcodelabs.socialmediaplanner.application.service.XIntegrationService;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -30,7 +31,7 @@ public class XIntegrationController {
             @RequestParam(required = false) String error
     ) {
         return OAuthControllerSupport.callback(
-                "twitter",
+                Platform.TWITTER.providerName(),
                 error,
                 () -> xIntegrationService.completeAuthorization(code, state),
                 xIntegrationService::frontendRedirectUri,

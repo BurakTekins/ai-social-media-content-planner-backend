@@ -1,6 +1,8 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.ai;
 
 import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
+import com.globalcodelabs.socialmediaplanner.infrastructure.IntegrationMode;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.mock.MockAiProviderClient;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.RecoverableVideoProviderClient;
 import org.springframework.stereotype.Component;
@@ -9,20 +11,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Component
 public class AiProviderFactory {
-
-    private static final Map<String, Set<AiCapability>> REAL_PROVIDER_CAPABILITIES = Map.of(
-            "openai", Set.of(AiCapability.TEXT, AiCapability.IMAGE),
-            "anthropic", Set.of(AiCapability.TEXT),
-            "gemini", Set.of(AiCapability.TEXT, AiCapability.IMAGE, AiCapability.VIDEO),
-            "deepseek", Set.of(AiCapability.TEXT),
-            "qwen", Set.of(AiCapability.TEXT, AiCapability.IMAGE, AiCapability.VIDEO)
-    );
 
     private final AiProviderProperties properties;
     private final MockAiProviderClient mockProviderClient;
@@ -46,7 +39,7 @@ public class AiProviderFactory {
     public AiProviderClient resolve(String providerName) {
         String normalizedProviderName = normalize(providerName);
         properties.requireProvider(normalizedProviderName);
-        if ("mock".equalsIgnoreCase(properties.getMode())) {
+        if (properties.getMode() == IntegrationMode.MOCK) {
             return mockProviderClient;
         }
         AiProviderClient providerClient = realProviderMap.get(normalizedProviderName);
@@ -64,12 +57,12 @@ public class AiProviderFactory {
         if (!properties.getProviders().containsKey(normalizedProviderName)) {
             return false;
         }
-        if ("mock".equalsIgnoreCase(properties.getMode())) {
+        if (properties.getMode() == IntegrationMode.MOCK) {
             return true;
         }
-        return REAL_PROVIDER_CAPABILITIES
-                .getOrDefault(normalizedProviderName, Set.of())
-                .contains(capability);
+        return AiProvider.findCanonical(normalizedProviderName)
+                .map(provider -> provider.supports(capability))
+                .orElse(false);
     }
 
     public Optional<RecoverableVideoProviderClient> findRecoverableVideo(String providerName) {

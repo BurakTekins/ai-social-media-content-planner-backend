@@ -1,10 +1,9 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.publishing;
 
+import com.globalcodelabs.socialmediaplanner.infrastructure.IntegrationMode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -21,9 +20,8 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "publishing")
 public class PublishingProperties {
 
-    @NotBlank
-    @Pattern(regexp = "mock|real")
-    private String mode = "mock";
+    @NotNull
+    private IntegrationMode mode = IntegrationMode.MOCK;
 
     @Valid
     @NotNull
@@ -45,7 +43,7 @@ public class PublishingProperties {
     private Map<String, Provider> providers = new LinkedHashMap<>();
 
     public boolean mockModeEnabled() {
-        return "mock".equals(mode);
+        return mode == IntegrationMode.MOCK;
     }
 
     public Provider requireProvider(String providerName) {

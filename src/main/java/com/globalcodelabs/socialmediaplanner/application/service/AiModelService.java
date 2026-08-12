@@ -5,6 +5,7 @@ import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderFactory
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoModelRegistry;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiModelCache;
 import com.globalcodelabs.socialmediaplanner.domain.repository.AiModelCacheRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +17,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -24,14 +24,6 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class AiModelService {
-
-    private static final Set<String> SUPPORTED_PROVIDERS = Set.of(
-            "openai",
-            "anthropic",
-            "gemini",
-            "deepseek",
-            "qwen"
-    );
 
     private final AiModelCacheRepository aiModelCacheRepository;
     private final AiProviderFactory aiProviderFactory;
@@ -130,31 +122,23 @@ public class AiModelService {
         if (provider == null) {
             return null;
         }
-        String normalized = provider.trim().toLowerCase(Locale.ROOT);
-        if (normalized.isEmpty()) {
+        if (provider.isBlank()) {
             throw new DomainException("Provider filter cannot be blank");
         }
-        return normalizeProviderAlias(normalized);
+        return requireProvider(provider).canonicalName();
     }
 
     private static String normalizeProvider(String provider) {
         if (provider == null || provider.isBlank()) {
             throw new DomainException("Provider name cannot be blank");
         }
-        return normalizeProviderAlias(provider.trim().toLowerCase(Locale.ROOT));
+        return requireProvider(provider).canonicalName();
     }
 
-    private static String normalizeProviderAlias(String provider) {
-        String canonicalProvider = switch (provider) {
-            case "claude" -> "anthropic";
-            case "google" -> "gemini";
-            case "alibaba" -> "qwen";
-            default -> provider;
-        };
-        if (!SUPPORTED_PROVIDERS.contains(canonicalProvider)) {
-            throw new DomainException("Unsupported AI provider: " + provider);
-        }
-        return canonicalProvider;
+    private static AiProvider requireProvider(String provider) {
+        return AiProvider.find(provider).orElseThrow(() -> new DomainException(
+                "Unsupported AI provider: " + provider.trim().toLowerCase(java.util.Locale.ROOT)
+        ));
     }
 
     private record ModelKey(

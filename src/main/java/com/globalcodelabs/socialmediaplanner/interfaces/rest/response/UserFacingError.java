@@ -1,6 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.response;
 
 import com.globalcodelabs.socialmediaplanner.domain.enums.ContentStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
 import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 
 import java.util.Locale;
@@ -484,28 +485,17 @@ record UserFacingError(String code, String message) {
         if (platform == null) {
             return "Sosyal medya platformu";
         }
-        return switch (platform) {
-            case TWITTER -> "X";
-            case LINKEDIN -> "LinkedIn";
-            case INSTAGRAM -> "Instagram";
-        };
+        return platform.displayName();
     }
 
     private static String providerDisplayName(String providerName) {
         if (providerName == null || providerName.isBlank()) {
             return "API sağlayıcısı";
         }
-        return switch (providerName.toLowerCase(Locale.ROOT)) {
-            case "openai" -> "OpenAI";
-            case "anthropic" -> "Anthropic";
-            case "gemini" -> "Gemini";
-            case "deepseek" -> "DeepSeek";
-            case "qwen" -> "Qwen";
-            case "twitter" -> "X";
-            case "linkedin" -> "LinkedIn";
-            case "instagram" -> "Instagram";
-            default -> "API sağlayıcısı";
-        };
+        return Platform.findByProviderName(providerName)
+                .map(Platform::displayName)
+                .or(() -> AiProvider.findCanonical(providerName).map(AiProvider::displayName))
+                .orElse("API sağlayıcısı");
     }
 
     private static boolean isBlank(String value) {

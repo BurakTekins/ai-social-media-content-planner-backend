@@ -33,7 +33,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class InstagramPlatformClient implements SocialPlatformClient {
 
-    private static final String PROVIDER_NAME = "instagram";
+    private static final String PROVIDER_NAME = Platform.INSTAGRAM.providerName();
 
     private final PublishingProperties properties;
     private final PublishingRestClientFactory restClientFactory;

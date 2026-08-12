@@ -2,6 +2,7 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.aimodel;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -14,9 +15,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.EnumSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -26,7 +25,7 @@ import java.util.Set;
 @Component
 public class ModelsDevClient {
 
-    private static final Map<String, String> PROVIDER_MAPPING = providerMapping();
+    private static final Map<String, String> PROVIDER_MAPPING = AiProvider.modelsDevProviderNames();
 
     private final RestClient restClient;
     private final URI apiUri;
@@ -249,13 +248,4 @@ public class ModelsDevClient {
         return value;
     }
 
-    private static Map<String, String> providerMapping() {
-        Map<String, String> providers = new LinkedHashMap<>();
-        providers.put("openai", "openai");
-        providers.put("anthropic", "anthropic");
-        providers.put("google", "gemini");
-        providers.put("deepseek", "deepseek");
-        providers.put("alibaba", "qwen");
-        return Collections.unmodifiableMap(providers);
-    }
 }

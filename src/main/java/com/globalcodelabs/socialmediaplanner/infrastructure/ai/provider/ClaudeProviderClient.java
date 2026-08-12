@@ -3,6 +3,7 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.ai.provider;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationRequest;
 import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialService;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
 import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponseException;
 import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiRestClientFactory;
@@ -16,7 +17,7 @@ import java.util.Objects;
 @Component
 public class ClaudeProviderClient extends AbstractAiProviderClient {
 
-    private static final String PROVIDER_NAME = "anthropic";
+    private static final String PROVIDER_NAME = AiProvider.ANTHROPIC.canonicalName();
 
     public ClaudeProviderClient(
             ApiCredentialService apiCredentialService,

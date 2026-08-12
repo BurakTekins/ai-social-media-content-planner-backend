@@ -39,7 +39,7 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class LinkedInPlatformClient implements SocialPlatformClient {
 
-    private static final String PROVIDER_NAME = "linkedin";
+    private static final String PROVIDER_NAME = Platform.LINKEDIN.providerName();
     private static final String RESTLI_PROTOCOL_VERSION = "2.0.0";
     private static final String POSTS_PATH = "rest/posts";
     private static final String IMAGES_PATH = "rest/images";
