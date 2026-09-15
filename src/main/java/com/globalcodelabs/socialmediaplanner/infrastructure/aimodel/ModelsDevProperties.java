@@ -2,6 +2,7 @@ package com.globalcodelabs.socialmediaplanner.infrastructure.aimodel;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -25,6 +26,12 @@ public class ModelsDevProperties {
     @NotNull
     private Duration readTimeout = Duration.ofSeconds(30);
 
+    @Min(1)
+    private int maxAttempts = 3;
+
+    @NotNull
+    private Duration retryDelay = Duration.ofMillis(500);
+
     @Valid
     @NotNull
     private Sync sync = new Sync();
@@ -37,6 +44,6 @@ public class ModelsDevProperties {
         private String cron = "0 0 3 * * *";
 
         @NotBlank
-        private String zone = "Europe/Istanbul";
+        private String zone = "UTC";
     }
 }

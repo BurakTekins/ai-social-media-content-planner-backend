@@ -1,7 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.domain.repository;
 
 import com.globalcodelabs.socialmediaplanner.domain.model.ApiCredential;
-import com.globalcodelabs.socialmediaplanner.domain.model.CredentialType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.CredentialType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -12,10 +12,17 @@ public interface ApiCredentialRepository extends JpaRepository<ApiCredential, UU
 
     boolean existsByCredentialTypeAndProviderName(CredentialType credentialType, String providerName);
 
+    Optional<ApiCredential> findByCredentialTypeAndProviderName(
+            CredentialType credentialType,
+            String providerName
+    );
+
     Optional<ApiCredential> findByCredentialTypeAndProviderNameAndActiveTrue(
             CredentialType credentialType,
             String providerName
     );
 
     List<ApiCredential> findAllByOrderByCredentialTypeAscProviderNameAsc();
+
+    List<ApiCredential> findAllByCredentialTypeAndActiveTrue(CredentialType credentialType);
 }

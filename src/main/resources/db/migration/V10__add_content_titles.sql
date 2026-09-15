@@ -1,0 +1,11 @@
+ALTER TABLE generation_batch
+    ADD COLUMN title VARCHAR(240) NOT NULL DEFAULT 'Mock Başlık';
+
+ALTER TABLE content
+    ADD COLUMN title VARCHAR(255) NOT NULL DEFAULT 'Mock Başlık';
+
+ALTER TABLE generation_batch
+    ALTER COLUMN title DROP DEFAULT;
+
+ALTER TABLE content
+    ALTER COLUMN title DROP DEFAULT;

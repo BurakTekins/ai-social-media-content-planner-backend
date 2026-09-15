@@ -1,100 +1,74 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.ai.provider;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiGenerationRequest;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiGenerationResult;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderClient;
-import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialResolver;
-import com.globalcodelabs.socialmediaplanner.application.service.ResolvedApiCredential;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationRequest;
+import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialService;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
 import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponseException;
-import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
-import com.globalcodelabs.socialmediaplanner.domain.model.CredentialType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiRestClientFactory;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderProperties;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClientException;
 
 import java.util.List;
 
-@Slf4j
 @Component
-@RequiredArgsConstructor
-public class DeepSeekProviderClient implements AiProviderClient {
+public class DeepSeekProviderClient extends AbstractAiProviderClient {
 
-    private static final String PROVIDER_NAME = "deepseek";
+    private static final String PROVIDER_NAME = AiProvider.DEEPSEEK.canonicalName();
 
-    private final ApiCredentialResolver apiCredentialResolver;
-    private final AiProviderProperties properties;
-    private final AiRestClientFactory restClientFactory;
-    private final AiProviderResponseDecoder responseDecoder;
-
-    @Override
-    public String providerName() {
-        return PROVIDER_NAME;
+    public DeepSeekProviderClient(
+            ApiCredentialService apiCredentialService,
+            AiProviderProperties properties,
+            AiRestClientFactory restClientFactory,
+            AiProviderResponseDecoder responseDecoder
+    ) {
+        super(
+                PROVIDER_NAME,
+                "chat-completions",
+                "DeepSeek request failed",
+                apiCredentialService,
+                properties,
+                restClientFactory,
+                responseDecoder
+        );
     }
 
     @Override
-    public AiGenerationResult generate(AiGenerationRequest request) {
-        validateRequest(request);
-        ResolvedApiCredential credential = apiCredentialResolver.resolveActive(
-                CredentialType.AI_PROVIDER, PROVIDER_NAME
+    protected ProviderOutput execute(AiGenerationRequest request, String accessToken) {
+        String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
+        ResponseEntity<String> responseEntity = restClientFactory.forBaseUrl(baseUrl)
+                .post()
+                .uri(restClientFactory.endpoint(baseUrl, "chat/completions"))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .body(new ChatRequest(
+                        request.model(),
+                        List.of(new ChatMessage("user", request.prompt())),
+                        false,
+                        new ResponseFormat("json_object"),
+                        new Thinking("disabled")
+                ))
+                .retrieve()
+                .toEntity(String.class);
+        AiProviderResponseDecoder.DecodedResponse<ChatResponse> decoded = responseDecoder.decode(
+                responseEntity,
+                ChatResponse.class,
+                "DeepSeek",
+                "x-request-id"
         );
-        long startedAt = System.nanoTime();
-        MdcUtil.putProvider(PROVIDER_NAME);
-        try {
-            log.info("AI provider call started operation=chat-completions capability={} model={}",
-                    request.capability(), request.model());
-            String baseUrl = properties.requireBaseUrl(PROVIDER_NAME);
-            ResponseEntity<String> responseEntity = restClientFactory.forBaseUrl(baseUrl)
-                    .post()
-                    .uri(restClientFactory.endpoint(baseUrl, "chat/completions"))
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + credential.accessToken())
-                    .body(new ChatRequest(
-                            request.model(),
-                            List.of(new ChatMessage("user", request.prompt())),
-                            false,
-                            new ResponseFormat("json_object"),
-                            new Thinking("disabled")
-                    ))
-                    .retrieve()
-                    .toEntity(String.class);
-            AiProviderResponseDecoder.DecodedResponse<ChatResponse> decoded = responseDecoder.decode(
-                    responseEntity,
-                    ChatResponse.class,
-                    "DeepSeek",
-                    "x-request-id"
-            );
-            ChatResponse response = decoded.body();
-            String providerResponseId = response == null ? null : normalizeId(response.id());
-            String providerRequestId = firstNonBlank(
-                    response == null ? null : response.requestId(),
-                    decoded.providerRequestId()
-            );
-            String output = extractText(response, providerResponseId, providerRequestId);
-            log.info("AI provider call completed operation=chat-completions capability={} model={} durationMs={}",
-                    request.capability(), request.model(), elapsedMilliseconds(startedAt));
-            return new AiGenerationResult(
-                    request.capability(),
-                    PROVIDER_NAME,
-                    request.model(),
-                    providerResponseId,
-                    providerRequestId,
-                    output
-            );
-        } catch (RestClientException exception) {
-            log.error("AI provider call failed operation=chat-completions capability={} model={} durationMs={} errorType={} httpStatus={}",
-                    request.capability(), request.model(), elapsedMilliseconds(startedAt),
-                    AiProviderResponseDecoder.errorType(exception),
-                    AiProviderResponseDecoder.httpStatus(exception));
-            throw new IllegalStateException("DeepSeek request failed", exception);
-        } finally {
-            MdcUtil.removeProvider();
-        }
+        ChatResponse response = decoded.body();
+        String providerResponseId = response == null ? null : normalizeId(response.id());
+        String providerRequestId = firstNonBlank(
+                response == null ? null : response.requestId(),
+                decoded.providerRequestId()
+        );
+        return new ProviderOutput(
+                extractText(response, providerResponseId, providerRequestId),
+                providerResponseId,
+                providerRequestId
+        );
     }
 
     private static String extractText(
@@ -118,30 +92,11 @@ public class DeepSeekProviderClient implements AiProviderClient {
         return choice.message().content();
     }
 
-    private static void validateRequest(AiGenerationRequest request) {
-        if (!PROVIDER_NAME.equals(request.provider())) {
-            throw new IllegalArgumentException("DeepSeekProviderClient cannot handle " + request.provider());
-        }
+    @Override
+    protected void validateRequest(AiGenerationRequest request) {
         if (request.capability() != AiCapability.TEXT) {
             throw new UnsupportedOperationException("DeepSeek does not generate " + request.capability());
         }
-    }
-
-    private static long elapsedMilliseconds(long startedAt) {
-        return (System.nanoTime() - startedAt) / 1_000_000;
-    }
-
-    private static String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
-        return null;
-    }
-
-    private static String normalizeId(String value) {
-        return value == null || value.isBlank() ? null : value;
     }
 
     private record ChatRequest(

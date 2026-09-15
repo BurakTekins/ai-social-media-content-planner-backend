@@ -1,8 +1,19 @@
 package com.globalcodelabs.socialmediaplanner.domain.model;
 
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentSourceType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationBatchStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.GenerationStrategy;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.policy.ContentPolicy;
+import com.globalcodelabs.socialmediaplanner.domain.policy.GenerationBatchPolicy;
+import com.globalcodelabs.socialmediaplanner.domain.policy.DomainValidation;
+import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.AttributeOverrides;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -10,22 +21,29 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
 @Entity
 @Table(name = "generation_batch")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter
+@Accessors(fluent = true)
 public class GenerationBatch {
 
     @Id
     private UUID id;
+
+    @Column(nullable = false, length = 240)
+    private String title;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -60,23 +78,42 @@ public class GenerationBatch {
     @Column(name = "include_video", nullable = false)
     private boolean includeVideo;
 
-    @Column(name = "text_provider", nullable = false)
-    private String textProvider;
+    @Column(name = "video_duration_seconds")
+    private Integer videoDurationSeconds;
 
-    @Column(name = "text_model", nullable = false)
-    private String textModel;
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "provider", column = @Column(name = "text_provider", nullable = false)),
+            @AttributeOverride(name = "model", column = @Column(name = "text_model", nullable = false))
+    })
+    @Getter(AccessLevel.NONE)
+    private AiModelSelection textModelSelection;
 
-    @Column(name = "image_provider")
-    private String imageProvider;
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "provider", column = @Column(name = "image_provider")),
+            @AttributeOverride(name = "model", column = @Column(name = "image_model"))
+    })
+    @Getter(AccessLevel.NONE)
+    private AiModelSelection imageModelSelection;
 
-    @Column(name = "image_model")
-    private String imageModel;
+    @Embedded
+    @AttributeOverrides({
+            @AttributeOverride(name = "provider", column = @Column(name = "video_provider")),
+            @AttributeOverride(name = "model", column = @Column(name = "video_model"))
+    })
+    @Getter(AccessLevel.NONE)
+    private AiModelSelection videoModelSelection;
 
-    @Column(name = "video_provider")
-    private String videoProvider;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "generation_strategy", nullable = false, length = 20)
+    private GenerationStrategy generationStrategy;
 
-    @Column(name = "video_model")
-    private String videoModel;
+    @Column(name = "strategy_selection_reason", nullable = false, columnDefinition = "TEXT")
+    private String strategySelectionReason;
+
+    @Column(name = "strategy_warning", columnDefinition = "TEXT")
+    private String strategyWarning;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
@@ -85,76 +122,94 @@ public class GenerationBatch {
     private OffsetDateTime updatedAt;
 
     @OneToMany(mappedBy = "batch", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Getter(AccessLevel.NONE)
     private List<ContentSource> sources = new ArrayList<>();
 
     private GenerationBatch(
+            String title,
             Platform platform,
             ContentType contentType,
             int requestedCount,
-            boolean includeImage,
-            boolean includeVideo,
-            String textProvider,
-            String textModel,
-            String imageProvider,
-            String imageModel,
-            String videoProvider,
-            String videoModel
+            AiModelSelection textModelSelection,
+            AiModelSelection imageModelSelection,
+            AiModelSelection videoModelSelection,
+            Integer videoDurationSeconds,
+            GenerationStrategy requestedStrategy,
+            int sourceCount
     ) {
-        validatePlatformContentType(platform, contentType);
+        ContentPolicy.validatePlatformMediaSelection(
+                platform,
+                contentType,
+                imageModelSelection != null,
+                videoModelSelection != null
+        );
         if (requestedCount <= 0) {
             throw new DomainException("Requested count must be greater than zero");
         }
-        validateOptionalModel(includeImage, imageProvider, imageModel, "image");
-        validateOptionalModel(includeVideo, videoProvider, videoModel, "video");
+        if (sourceCount <= 0) {
+            throw new DomainException("At least one source is required");
+        }
+        GenerationBatchPolicy.Selection strategySelection = GenerationBatchPolicy.selectStrategy(
+                requestedStrategy,
+                sourceCount,
+                requestedCount
+        );
 
         this.id = UUID.randomUUID();
+        this.title = GenerationBatchPolicy.normalizeTitle(title);
         this.platform = platform;
         this.contentType = contentType;
         this.requestedCount = requestedCount;
         this.completedCount = 0;
         this.status = GenerationBatchStatus.IN_PROGRESS;
         this.retryCount = 0;
-        this.includeImage = includeImage;
-        this.includeVideo = includeVideo;
-        this.textProvider = requireProvider(textProvider, "Text provider cannot be blank");
-        this.textModel = requireValue(textModel, "Text model cannot be blank");
-        this.imageProvider = normalizedOptionalProvider(imageProvider);
-        this.imageModel = normalizedOptionalValue(imageModel);
-        this.videoProvider = normalizedOptionalProvider(videoProvider);
-        this.videoModel = normalizedOptionalValue(videoModel);
-        this.createdAt = OffsetDateTime.now();
+        this.includeImage = imageModelSelection != null;
+        this.includeVideo = videoModelSelection != null;
+        validateVideoDuration(videoModelSelection, videoDurationSeconds);
+        this.videoDurationSeconds = videoDurationSeconds;
+        this.textModelSelection = Objects.requireNonNull(
+                textModelSelection,
+                "Text model selection cannot be null"
+        );
+        this.imageModelSelection = imageModelSelection;
+        this.videoModelSelection = videoModelSelection;
+        this.generationStrategy = strategySelection.strategy();
+        this.strategySelectionReason = strategySelection.reason();
+        this.strategyWarning = strategySelection.warning();
+        this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.updatedAt = createdAt;
     }
 
     public static GenerationBatch create(
+            String title,
             Platform platform,
             ContentType contentType,
             int requestedCount,
-            boolean includeImage,
-            boolean includeVideo,
-            String textProvider,
-            String textModel,
-            String imageProvider,
-            String imageModel,
-            String videoProvider,
-            String videoModel
+            AiModelSelection textModelSelection,
+            AiModelSelection imageModelSelection,
+            AiModelSelection videoModelSelection,
+            Integer videoDurationSeconds,
+            GenerationStrategy requestedStrategy,
+            int sourceCount
     ) {
         return new GenerationBatch(
-                platform, contentType, requestedCount, includeImage, includeVideo,
-                textProvider, textModel, imageProvider, imageModel, videoProvider, videoModel
+                title, platform, contentType, requestedCount,
+                textModelSelection, imageModelSelection, videoModelSelection,
+                videoDurationSeconds,
+                requestedStrategy, sourceCount
         );
     }
 
     public void addLinkSource(String url) {
         ensureInProgress();
         sources.add(ContentSource.create(this, ContentSourceType.LINK, url));
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void addDocumentSource(String storageKey) {
         ensureInProgress();
         sources.add(ContentSource.create(this, ContentSourceType.DOCUMENT, storageKey));
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void recordCompletedContent() {
@@ -163,7 +218,7 @@ public class GenerationBatch {
             throw new DomainException("Completed count cannot exceed requested count");
         }
         completedCount++;
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         if (completedCount == requestedCount) {
             status = GenerationBatchStatus.COMPLETED;
         }
@@ -175,7 +230,7 @@ public class GenerationBatch {
             throw new DomainException("Persisted content count must be between zero and requested count");
         }
         completedCount = persistedContentCount;
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         if (completedCount == requestedCount) {
             status = GenerationBatchStatus.COMPLETED;
         }
@@ -189,98 +244,46 @@ public class GenerationBatch {
         ensureInProgress();
         status = GenerationBatchStatus.FAILED;
         lastError = normalizedOptionalValue(errorMessage);
-        updatedAt = OffsetDateTime.now();
+        updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public void retry() {
         if (status != GenerationBatchStatus.FAILED) {
             throw new DomainException("Only failed generation batch can be retried");
         }
-        OffsetDateTime retriedAt = OffsetDateTime.now();
+        OffsetDateTime retriedAt = OffsetDateTime.now(ZoneOffset.UTC);
         status = GenerationBatchStatus.IN_PROGRESS;
         retryCount++;
         lastRetryAt = retriedAt;
         updatedAt = retriedAt;
     }
 
-    public UUID id() {
-        return id;
-    }
-
-    public Platform platform() {
-        return platform;
-    }
-
-    public ContentType contentType() {
-        return contentType;
-    }
-
-    public int requestedCount() {
-        return requestedCount;
-    }
-
-    public int completedCount() {
-        return completedCount;
-    }
-
-    public GenerationBatchStatus status() {
-        return status;
-    }
-
-    public int retryCount() {
-        return retryCount;
-    }
-
-    public String lastError() {
-        return lastError;
-    }
-
-    public OffsetDateTime lastRetryAt() {
-        return lastRetryAt;
-    }
-
-    public boolean includeImage() {
-        return includeImage;
-    }
-
-    public boolean includeVideo() {
-        return includeVideo;
-    }
-
-    public String textProvider() {
-        return textProvider;
-    }
-
-    public String textModel() {
-        return textModel;
-    }
-
-    public String imageProvider() {
-        return imageProvider;
-    }
-
-    public String imageModel() {
-        return imageModel;
-    }
-
-    public String videoProvider() {
-        return videoProvider;
-    }
-
-    public String videoModel() {
-        return videoModel;
-    }
-
     public List<ContentSource> sources() {
         return List.copyOf(sources);
     }
 
-    public OffsetDateTime createdAt() {
-        return createdAt;
+    public String textProvider() {
+        return textModelSelection.provider();
     }
 
-    public OffsetDateTime updatedAt() {
-        return updatedAt;
+    public String textModel() {
+        return textModelSelection.model();
+    }
+
+    public String imageProvider() {
+        return imageModelSelection == null ? null : imageModelSelection.provider();
+    }
+
+    public String imageModel() {
+        return imageModelSelection == null ? null : imageModelSelection.model();
+    }
+
+    public String videoProvider() {
+        return videoModelSelection == null ? null : videoModelSelection.provider();
+    }
+
+    public String videoModel() {
+        return videoModelSelection == null ? null : videoModelSelection.model();
     }
 
     private void ensureInProgress() {
@@ -289,41 +292,20 @@ public class GenerationBatch {
         }
     }
 
-    private static void validatePlatformContentType(Platform platform, ContentType contentType) {
-        Objects.requireNonNull(platform, "Platform cannot be null");
-        Objects.requireNonNull(contentType, "Content type cannot be null");
-        if (!platform.supports(contentType)) {
-            throw new DomainException("Content type " + contentType + " is not supported by " + platform);
-        }
-    }
-
-    private static void validateOptionalModel(boolean included, String provider, String model, String capability) {
-        boolean providerPresent = provider != null && !provider.isBlank();
-        boolean modelPresent = model != null && !model.isBlank();
-        if (included && (!providerPresent || !modelPresent)) {
-            throw new DomainException(capability + " provider and model are required");
-        }
-        if (!included && (providerPresent || modelPresent)) {
-            throw new DomainException(capability + " provider and model must be empty when disabled");
-        }
-    }
-
-    private static String requireValue(String value, String message) {
-        if (value == null || value.isBlank()) {
-            throw new DomainException(message);
-        }
-        return value.trim();
-    }
-
     private static String normalizedOptionalValue(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+        return DomainValidation.normalizeOptionalText(value);
     }
 
-    private static String requireProvider(String value, String message) {
-        return requireValue(value, message).toLowerCase(Locale.ROOT);
+    private static void validateVideoDuration(
+            AiModelSelection videoModelSelection,
+            Integer videoDurationSeconds
+    ) {
+        if (videoModelSelection == null && videoDurationSeconds != null) {
+            throw new DomainException("Video duration must be empty when video generation is disabled");
+        }
+        if (videoModelSelection != null && (videoDurationSeconds == null || videoDurationSeconds <= 0)) {
+            throw new DomainException("Video duration is required when video generation is enabled");
+        }
     }
 
-    private static String normalizedOptionalProvider(String value) {
-        return value == null || value.isBlank() ? null : value.trim().toLowerCase(Locale.ROOT);
-    }
 }

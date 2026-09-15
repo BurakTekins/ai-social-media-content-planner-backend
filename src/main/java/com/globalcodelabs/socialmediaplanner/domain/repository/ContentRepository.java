@@ -1,8 +1,8 @@
 package com.globalcodelabs.socialmediaplanner.domain.repository;
 
 import com.globalcodelabs.socialmediaplanner.domain.model.Content;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentStatus;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -34,12 +34,33 @@ public interface ContentRepository extends JpaRepository<Content, UUID> {
             WHERE (:status IS NULL OR content.status = :status)
               AND (:platform IS NULL OR content.platform = :platform)
               AND (:batchId IS NULL OR content.batchId = :batchId)
+              AND (
+                    LOWER(content.title) LIKE CONCAT('%', LOWER(:searchTerm), '%')
+                    OR LOWER(content.text) LIKE CONCAT('%', LOWER(:searchTerm), '%')
+              )
             """)
     Page<Content> findAllByFilters(
             @Param("status") ContentStatus status,
             @Param("platform") Platform platform,
             @Param("batchId") UUID batchId,
+            @Param("searchTerm") String searchTerm,
             Pageable pageable
+    );
+
+    @Query("""
+            SELECT content.status AS status, COUNT(content) AS count
+            FROM Content content
+            WHERE (:platform IS NULL OR content.platform = :platform)
+              AND (
+                    :searchTerm = ''
+                    OR LOWER(content.title) LIKE CONCAT('%', LOWER(:searchTerm), '%')
+                    OR LOWER(content.text) LIKE CONCAT('%', LOWER(:searchTerm), '%')
+              )
+            GROUP BY content.status
+            """)
+    List<ContentStatusCount> countByStatusAndFilters(
+            @Param("platform") Platform platform,
+            @Param("searchTerm") String searchTerm
     );
 
     @EntityGraph(attributePaths = "media")
@@ -73,4 +94,33 @@ public interface ContentRepository extends JpaRepository<Content, UUID> {
             FOR UPDATE SKIP LOCKED
             """, nativeQuery = true)
     Optional<UUID> lockNextDueContentId(@Param("now") OffsetDateTime now);
+
+    @Query(value = """
+            SELECT content.id
+            FROM content
+            WHERE content.status = 'PUBLISHING'
+              AND content.external_post_id IS NOT NULL
+              AND (content.publication_checked_at IS NULL OR content.publication_checked_at <= :checkBefore)
+            ORDER BY content.publication_checked_at NULLS FIRST, content.publishing_started_at, content.id
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+            """, nativeQuery = true)
+    Optional<UUID> lockNextPendingConfirmationId(@Param("checkBefore") OffsetDateTime checkBefore);
+
+    @Query(value = """
+            SELECT content.id
+            FROM content
+            WHERE content.status = 'PUBLISHING'
+              AND content.publishing_started_at <= :deadline
+            ORDER BY content.publishing_started_at, content.id
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+            """, nativeQuery = true)
+    Optional<UUID> lockNextTimedOutPublicationId(@Param("deadline") OffsetDateTime deadline);
+
+    interface ContentStatusCount {
+        ContentStatus getStatus();
+
+        long getCount();
+    }
 }

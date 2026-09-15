@@ -1,81 +1,71 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.ai.provider;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiGenerationRequest;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiGenerationResult;
-import com.globalcodelabs.socialmediaplanner.application.port.out.ai.AiProviderClient;
-import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialResolver;
-import com.globalcodelabs.socialmediaplanner.application.service.ResolvedApiCredential;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationRequest;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiGenerationResult;
+import com.globalcodelabs.socialmediaplanner.application.service.ApiCredentialService;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
 import com.globalcodelabs.socialmediaplanner.common.exception.AiProviderResponseException;
-import com.globalcodelabs.socialmediaplanner.common.logging.MdcUtil;
-import com.globalcodelabs.socialmediaplanner.domain.model.CredentialType;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiRestClientFactory;
-import com.globalcodelabs.socialmediaplanner.infrastructure.ai.config.AiProviderProperties;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderProperties;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.AiGeneratedVideoDownloader;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.RecoverableVideoProviderClient;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoArtifactExpiredException;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoModelRegistry;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoProviderTaskFailedException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClientException;
 
 import java.net.URI;
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
-@Slf4j
 @Component
-@RequiredArgsConstructor
-public class QwenProviderClient implements AiProviderClient {
+public class QwenProviderClient extends AbstractAiProviderClient implements RecoverableVideoProviderClient {
 
-    private static final String PROVIDER_NAME = "qwen";
+    private static final String PROVIDER_NAME = AiProvider.QWEN.canonicalName();
+    private static final Set<String> VIDEO_DOWNLOAD_HOSTS = Set.of("aliyuncs.com");
+    private static final Duration TASK_RETENTION = Duration.ofHours(24);
 
-    private final ApiCredentialResolver apiCredentialResolver;
-    private final AiProviderProperties properties;
-    private final AiRestClientFactory restClientFactory;
-    private final AiProviderResponseDecoder responseDecoder;
+    private final VideoModelRegistry videoModelRegistry;
+    private final AiGeneratedVideoDownloader videoDownloader;
 
-    @Override
-    public String providerName() {
-        return PROVIDER_NAME;
+    public QwenProviderClient(
+            ApiCredentialService apiCredentialService,
+            AiProviderProperties properties,
+            AiRestClientFactory restClientFactory,
+            AiProviderResponseDecoder responseDecoder,
+            VideoModelRegistry videoModelRegistry,
+            AiGeneratedVideoDownloader videoDownloader
+    ) {
+        super(
+                PROVIDER_NAME,
+                "generate",
+                "Qwen request failed",
+                apiCredentialService,
+                properties,
+                restClientFactory,
+                responseDecoder
+        );
+        this.videoModelRegistry = videoModelRegistry;
+        this.videoDownloader = videoDownloader;
     }
 
     @Override
-    public AiGenerationResult generate(AiGenerationRequest request) {
-        validateProvider(request);
-        ResolvedApiCredential credential = apiCredentialResolver.resolveActive(
-                CredentialType.AI_PROVIDER, PROVIDER_NAME
-        );
-        long startedAt = System.nanoTime();
-        MdcUtil.putProvider(PROVIDER_NAME);
-        try {
-            log.info("AI provider call started operation=generate capability={} model={}",
-                    request.capability(), request.model());
-            ProviderOutput generated = switch (request.capability()) {
-                case TEXT -> generateText(request, credential.accessToken());
-                case IMAGE -> generateImage(request, credential.accessToken());
-                case VIDEO -> throw new UnsupportedOperationException(
-                        "Qwen video generation requires Wan asynchronous task polling"
-                );
-            };
-            log.info("AI provider call completed operation=generate capability={} model={} durationMs={}",
-                    request.capability(), request.model(), elapsedMilliseconds(startedAt));
-            return new AiGenerationResult(
-                    request.capability(),
-                    PROVIDER_NAME,
-                    request.model(),
-                    generated.providerResponseId(),
-                    generated.providerRequestId(),
-                    generated.output()
-            );
-        } catch (RestClientException exception) {
-            log.error("AI provider call failed operation=generate capability={} model={} durationMs={} errorType={} httpStatus={}",
-                    request.capability(), request.model(), elapsedMilliseconds(startedAt),
-                    AiProviderResponseDecoder.errorType(exception),
-                    AiProviderResponseDecoder.httpStatus(exception));
-            throw new IllegalStateException("Qwen request failed", exception);
-        } finally {
-            MdcUtil.removeProvider();
-        }
+    protected ProviderOutput execute(AiGenerationRequest request, String accessToken) {
+        return switch (request.capability()) {
+            case TEXT -> generateText(request, accessToken);
+            case IMAGE -> generateImage(request, accessToken);
+            case VIDEO -> generateVideo(request, accessToken);
+        };
     }
 
     private ProviderOutput generateText(AiGenerationRequest request, String accessToken) {
@@ -203,27 +193,281 @@ public class QwenProviderClient implements AiProviderClient {
         );
     }
 
-    private static void validateProvider(AiGenerationRequest request) {
-        if (!PROVIDER_NAME.equals(request.provider())) {
-            throw new IllegalArgumentException("QwenProviderClient cannot handle " + request.provider());
+    private ProviderOutput generateVideo(AiGenerationRequest request, String accessToken) {
+        videoModelRegistry.validate(request.provider(), request.model(), request.videoDurationSeconds());
+        VideoTaskSubmission submission = submitVideo(request, accessToken);
+        VideoArtifactReference artifact = awaitVideo(submission, accessToken, false);
+        AiGenerationResult.GeneratedMedia media = downloadVideo(artifact);
+        return new ProviderOutput(
+                "Qwen Wan task completed",
+                artifact.taskId(),
+                artifact.providerRequestId(),
+                media
+        );
+    }
+
+    @Override
+    public VideoTaskSubmission submitVideo(AiGenerationRequest request) {
+        videoModelRegistry.validate(request.provider(), request.model(), request.videoDurationSeconds());
+        return submitVideo(request, resolveAccessToken());
+    }
+
+    private VideoTaskSubmission submitVideo(AiGenerationRequest request, String accessToken) {
+        String baseUrl = properties.requireVideoBaseUrl(PROVIDER_NAME);
+        WanVideoParameters parameters = request.model().toLowerCase(Locale.ROOT).startsWith("wan2.7")
+                ? new WanVideoParameters(null, "720P", "16:9", request.videoDurationSeconds(), true, false)
+                : new WanVideoParameters("1280*720", null, null, request.videoDurationSeconds(), true, false);
+        ResponseEntity<String> startEntity = restClientFactory.forBaseUrl(baseUrl)
+                .post()
+                .uri(restClientFactory.endpoint(
+                        baseUrl,
+                        "services/aigc/video-generation/video-synthesis"
+                ))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .header("X-DashScope-Async", "enable")
+                .body(new WanVideoRequest(
+                        request.model(),
+                        new WanVideoInput(request.prompt()),
+                        parameters
+                ))
+                .retrieve()
+                .toEntity(String.class);
+        AiProviderResponseDecoder.DecodedResponse<WanTaskResponse> start = responseDecoder.decode(
+                startEntity,
+                WanTaskResponse.class,
+                "Qwen Wan",
+                "x-request-id"
+        );
+        String requestId = firstNonBlank(
+                start.body() == null ? null : start.body().requestId(),
+                start.providerRequestId()
+        );
+        WanTaskResponse startBody = start.body();
+        String taskId = requireText(
+                startBody == null || startBody.output() == null
+                        ? null
+                        : startBody.output().taskId(),
+                "Qwen Wan returned no task ID: " + safeProviderMessage(
+                        startBody == null ? null : startBody.message()
+                ),
+                null,
+                requestId
+        );
+        return new VideoTaskSubmission(taskId, requestId, OffsetDateTime.now(ZoneOffset.UTC));
+    }
+
+    @Override
+    public VideoArtifactReference awaitVideo(VideoTaskSubmission submission) {
+        return awaitVideo(submission, resolveAccessToken(), false);
+    }
+
+    private VideoArtifactReference awaitVideo(
+            VideoTaskSubmission submission,
+            String accessToken,
+            boolean expiredOnUnknown
+    ) {
+        String baseUrl = properties.requireVideoBaseUrl(PROVIDER_NAME);
+        WanTaskResponse completed = pollWanTask(
+                baseUrl,
+                submission.taskId(),
+                accessToken,
+                properties.requireProvider(PROVIDER_NAME),
+                submission.providerRequestId(),
+                expiredOnUnknown
+        );
+        WanTaskOutput output = completed.output();
+        String videoUrl = requireText(
+                output == null ? null : output.videoUrl(),
+                "Qwen Wan completed without a video URL",
+                submission.taskId(),
+                firstNonBlank(completed.requestId(), submission.providerRequestId())
+        );
+        return new VideoArtifactReference(
+                submission.taskId(),
+                firstNonBlank(completed.requestId(), submission.providerRequestId()),
+                videoUrl,
+                submission.submittedAt().plus(TASK_RETENTION)
+        );
+    }
+
+    @Override
+    public VideoArtifactReference resolveCompletedVideo(
+            String taskId,
+            String providerRequestId,
+            OffsetDateTime submittedAt
+    ) {
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalArgumentException("Qwen Wan task ID cannot be blank");
         }
+        return awaitVideo(
+                new VideoTaskSubmission(
+                        taskId,
+                        providerRequestId,
+                        submittedAt
+                ),
+                resolveAccessToken(),
+                true
+        );
     }
 
-    private static long elapsedMilliseconds(long startedAt) {
-        return (System.nanoTime() - startedAt) / 1_000_000;
+    @Override
+    public AiGenerationResult.GeneratedMedia downloadVideo(VideoArtifactReference artifact) {
+        AiProviderProperties.Provider provider = properties.requireProvider(PROVIDER_NAME);
+        AiGenerationResult.GeneratedMedia media;
+        try {
+            media = videoDownloader.download(
+                    artifact.artifactUrl(),
+                    Map.of(),
+                    VIDEO_DOWNLOAD_HOSTS,
+                    provider
+            );
+        } catch (VideoArtifactExpiredException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new AiProviderResponseException(
+                    "Qwen Wan video download failed",
+                    artifact.taskId(),
+                    artifact.providerRequestId(),
+                    exception
+            );
+        }
+        return media;
     }
 
-    private static String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value;
+    private WanTaskResponse pollWanTask(
+            String baseUrl,
+            String taskId,
+            String accessToken,
+            AiProviderProperties.Provider provider,
+            String initialRequestId,
+            boolean expiredOnUnknown
+    ) {
+        long deadline = deadline(provider.getVideoPollTimeout());
+        while (true) {
+            waitForPoll(provider.getVideoPollInterval(), deadline, taskId, initialRequestId);
+            ResponseEntity<String> pollEntity = restClientFactory.forBaseUrl(baseUrl)
+                    .get()
+                    .uri(restClientFactory.endpoint(baseUrl, "tasks/" + taskId))
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                    .retrieve()
+                    .toEntity(String.class);
+            AiProviderResponseDecoder.DecodedResponse<WanTaskResponse> poll = responseDecoder.decode(
+                    pollEntity,
+                    WanTaskResponse.class,
+                    "Qwen Wan",
+                    "x-request-id"
+            );
+            WanTaskResponse response = poll.body();
+            WanTaskOutput output = response == null ? null : response.output();
+            String requestId = firstNonBlank(
+                    response == null ? null : response.requestId(),
+                    poll.providerRequestId(),
+                    initialRequestId
+            );
+            String status = output == null ? null : output.taskStatus();
+            if (status == null || status.isBlank()) {
+                throw new AiProviderResponseException(
+                        "Qwen Wan returned an empty task status",
+                        taskId,
+                        requestId
+                );
+            }
+            switch (status) {
+                case "SUCCEEDED" -> {
+                    return response;
+                }
+                case "PENDING", "RUNNING" -> {
+                    if (System.nanoTime() >= deadline) {
+                        throw new AiProviderResponseException(
+                                "Qwen Wan task timed out",
+                                taskId,
+                                requestId
+                        );
+                    }
+                }
+                case "UNKNOWN" -> {
+                    if (expiredOnUnknown) {
+                        throw new VideoArtifactExpiredException(
+                                "Qwen Wan task is expired or no longer available"
+                        );
+                    }
+                    throw new AiProviderResponseException(
+                            "Qwen Wan task status is unknown",
+                            taskId,
+                            requestId
+                    );
+                }
+                case "FAILED", "CANCELED" -> throw new VideoProviderTaskFailedException(
+                        "Qwen Wan task " + status.toLowerCase() + ": " + safeProviderMessage(
+                                firstNonBlank(output.message(), response.message())
+                        ),
+                        taskId,
+                        requestId
+                );
+                default -> throw new AiProviderResponseException(
+                        "Qwen Wan returned unsupported task status: " + safeProviderMessage(status),
+                        taskId,
+                        requestId
+                );
             }
         }
-        return null;
     }
 
-    private static String normalizeId(String value) {
-        return value == null || value.isBlank() ? null : value;
+    private static long deadline(Duration timeout) {
+        if (timeout == null || timeout.isZero() || timeout.isNegative()) {
+            throw new IllegalStateException("Qwen Wan poll timeout must be positive");
+        }
+        return System.nanoTime() + timeout.toNanos();
+    }
+
+    private static void waitForPoll(
+            Duration interval,
+            long deadline,
+            String taskId,
+            String requestId
+    ) {
+        if (interval == null || interval.isZero() || interval.isNegative()) {
+            throw new IllegalStateException("Qwen Wan poll interval must be positive");
+        }
+        long remainingNanos = deadline - System.nanoTime();
+        if (remainingNanos <= 0) {
+            throw new AiProviderResponseException(
+                    "Qwen Wan task timed out",
+                    taskId,
+                    requestId
+            );
+        }
+        try {
+            Thread.sleep(Duration.ofNanos(Math.min(interval.toNanos(), remainingNanos)));
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AiProviderResponseException(
+                    "Qwen Wan polling was interrupted",
+                    taskId,
+                    requestId,
+                    exception
+            );
+        }
+    }
+
+    private static String requireText(
+            String value,
+            String message,
+            String providerResponseId,
+            String providerRequestId
+    ) {
+        if (value == null || value.isBlank()) {
+            throw new AiProviderResponseException(message, providerResponseId, providerRequestId);
+        }
+        return value.trim();
+    }
+
+    private static String safeProviderMessage(String value) {
+        if (value == null || value.isBlank()) {
+            return "unknown provider error";
+        }
+        String normalized = value.replaceAll("[\\r\\n]+", " ").trim();
+        return normalized.length() <= 500 ? normalized : normalized.substring(0, 500);
     }
 
     private record ChatRequest(
@@ -292,10 +536,38 @@ public class QwenProviderClient implements AiProviderClient {
     private record ImageResponseContent(String image) {
     }
 
-    private record ProviderOutput(
-            String output,
-            String providerResponseId,
-            String providerRequestId
+    private record WanVideoRequest(String model, WanVideoInput input, WanVideoParameters parameters) {
+    }
+
+    private record WanVideoInput(String prompt) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record WanVideoParameters(
+            String size,
+            String resolution,
+            String ratio,
+            Integer duration,
+            @JsonProperty("prompt_extend") boolean promptExtend,
+            boolean watermark
     ) {
     }
+
+    private record WanTaskResponse(
+            WanTaskOutput output,
+            @JsonProperty("request_id") String requestId,
+            String code,
+            String message
+    ) {
+    }
+
+    private record WanTaskOutput(
+            @JsonProperty("task_id") String taskId,
+            @JsonProperty("task_status") String taskStatus,
+            @JsonProperty("video_url") String videoUrl,
+            String code,
+            String message
+    ) {
+    }
+
 }

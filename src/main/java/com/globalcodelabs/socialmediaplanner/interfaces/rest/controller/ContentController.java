@@ -1,22 +1,26 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.controller;
 
 import com.globalcodelabs.socialmediaplanner.application.command.UploadedMedia;
-import com.globalcodelabs.socialmediaplanner.application.port.out.storage.StoredMediaContent;
+import com.globalcodelabs.socialmediaplanner.infrastructure.storage.StoredMediaContent;
 import com.globalcodelabs.socialmediaplanner.application.service.ContentService;
+import com.globalcodelabs.socialmediaplanner.application.service.DraftRegenerationService;
 import com.globalcodelabs.socialmediaplanner.application.service.PublishingService;
 import com.globalcodelabs.socialmediaplanner.domain.model.Content;
-import com.globalcodelabs.socialmediaplanner.domain.model.ContentStatus;
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
-import com.globalcodelabs.socialmediaplanner.domain.model.Platform;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.CreateContentRequest;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.AiModelSelectionRequest;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.RegenerateMediaRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.ScheduleContentRequest;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.request.UpdateDraftContentRequest;
-import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.ContentPageResponse;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.ContentResponse;
+import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.PageResponse;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.PublishAttemptResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -44,6 +48,7 @@ import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -53,13 +58,15 @@ import java.util.UUID;
 public class ContentController {
 
     private final ContentService contentService;
+    private final DraftRegenerationService draftRegenerationService;
     private final PublishingService publishingService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ContentResponse create(@Valid @RequestBody CreateContentRequest request) {
         Content content = Content.create(
-                request.platform(), request.contentType(), request.text(), request.hashtags(), request.batchId()
+                request.title(), request.platform(), request.contentType(), request.text(),
+                request.hashtags(), request.batchId()
         );
         if (request.media() != null) {
             request.media().forEach(media -> content.addMedia(
@@ -71,15 +78,31 @@ public class ContentController {
     }
 
     @GetMapping
-    public ContentPageResponse findAll(
+    public PageResponse<ContentResponse> findAll(
             @RequestParam(required = false) ContentStatus status,
             @RequestParam(required = false) Platform platform,
             @RequestParam(required = false) UUID batchId,
+            @RequestParam(required = false) @Size(max = 255) String title,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        return ContentPageResponse.from(contentService.findAll(status, platform, batchId, pageRequest));
+        PageRequest pageRequest = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))
+        );
+        return PageResponse.from(
+                contentService.findAll(status, platform, batchId, title, pageRequest),
+                ContentResponse::from
+        );
+    }
+
+    @GetMapping("/status-counts")
+    public Map<ContentStatus, Long> countByStatus(
+            @RequestParam(required = false) Platform platform,
+            @RequestParam(required = false) @Size(max = 255) String title
+    ) {
+        return contentService.countByStatus(platform, title);
     }
 
     @GetMapping("/calendar")
@@ -114,7 +137,38 @@ public class ContentController {
             @Valid @RequestBody UpdateDraftContentRequest request
     ) {
         return ContentResponse.from(
-                contentService.updateDraft(contentId, request.text(), request.hashtags())
+                contentService.updateDraft(contentId, request.title(), request.text(), request.hashtags())
+        );
+    }
+
+    @PostMapping("/{contentId}/regenerate/text")
+    public ContentResponse regenerateText(
+            @PathVariable UUID contentId,
+            @Valid @RequestBody AiModelSelectionRequest request
+    ) {
+        return ContentResponse.from(
+                draftRegenerationService.regenerateText(
+                        contentId,
+                        request.provider(),
+                        request.model()
+                )
+        );
+    }
+
+    @PostMapping("/{contentId}/regenerate/media/{mediaType}")
+    public ContentResponse regenerateMedia(
+            @PathVariable UUID contentId,
+            @PathVariable MediaType mediaType,
+            @Valid @RequestBody RegenerateMediaRequest request
+    ) {
+        return ContentResponse.from(
+                draftRegenerationService.regenerateMedia(
+                        contentId,
+                        mediaType,
+                        request.provider(),
+                        request.model(),
+                        request.videoDurationSeconds()
+                )
         );
     }
 
@@ -171,6 +225,16 @@ public class ContentController {
     @DeleteMapping("/{contentId}/schedule")
     public ContentResponse cancelSchedule(@PathVariable UUID contentId) {
         return ContentResponse.from(contentService.cancelSchedule(contentId));
+    }
+
+    @PutMapping("/{contentId}/review/published")
+    public ContentResponse markReviewPublished(@PathVariable UUID contentId) {
+        return ContentResponse.from(contentService.markReviewPublished(contentId));
+    }
+
+    @PutMapping("/{contentId}/review/failed")
+    public ContentResponse markReviewFailed(@PathVariable UUID contentId) {
+        return ContentResponse.from(contentService.markReviewFailed(contentId));
     }
 
     @DeleteMapping("/{contentId}")

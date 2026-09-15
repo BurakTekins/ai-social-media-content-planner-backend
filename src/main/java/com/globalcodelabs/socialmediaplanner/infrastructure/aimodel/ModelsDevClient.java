@@ -1,20 +1,21 @@
 package com.globalcodelabs.socialmediaplanner.infrastructure.aimodel;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.globalcodelabs.socialmediaplanner.application.port.out.aimodel.ModelsDevCatalogClient;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiProvider;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.EnumSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -22,34 +23,73 @@ import java.util.Set;
 
 @Slf4j
 @Component
-public class ModelsDevClient implements ModelsDevCatalogClient {
+public class ModelsDevClient {
 
-    private static final Map<String, String> PROVIDER_MAPPING = providerMapping();
+    private static final Map<String, String> PROVIDER_MAPPING = AiProvider.modelsDevProviderNames();
 
     private final RestClient restClient;
     private final URI apiUri;
+    private final int maxAttempts;
+    private final Duration retryDelay;
 
+    @Autowired
     public ModelsDevClient(ModelsDevProperties properties) {
-        this.apiUri = requireHttpUri(properties.getApiUrl());
+        URI configuredApiUri = requireHttpUri(properties.getApiUrl());
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getConnectTimeout())
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(properties.getReadTimeout());
-        this.restClient = RestClient.builder()
+        RestClient configuredRestClient = RestClient.builder()
                 .requestFactory(requestFactory)
                 .build();
+        this.restClient = configuredRestClient;
+        this.apiUri = configuredApiUri;
+        this.maxAttempts = requirePositive(properties.getMaxAttempts());
+        this.retryDelay = requireNonNegative(properties.getRetryDelay());
     }
 
-    @Override
+    ModelsDevClient(RestClient restClient, URI apiUri, int maxAttempts, Duration retryDelay) {
+        this.restClient = restClient;
+        this.apiUri = apiUri;
+        this.maxAttempts = requirePositive(maxAttempts);
+        this.retryDelay = requireNonNegative(retryDelay);
+    }
+
     public List<ModelData> fetchAll() {
-        JsonNode response = restClient.get()
-                .uri(apiUri)
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .body(JsonNode.class);
-        return parseCatalog(response);
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                JsonNode response = restClient.get()
+                        .uri(apiUri)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .retrieve()
+                        .body(JsonNode.class);
+                return parseCatalog(response);
+            } catch (RestClientException exception) {
+                if (attempt == maxAttempts) {
+                    throw exception;
+                }
+                log.warn(
+                        "models.dev request failed; retrying attempt={} maxAttempts={} delayMs={}",
+                        attempt,
+                        maxAttempts,
+                        retryDelay.toMillis(),
+                        exception
+                );
+                waitBeforeRetry();
+            }
+        }
+        throw new IllegalStateException("models.dev request attempts exhausted");
+    }
+
+    private void waitBeforeRetry() {
+        try {
+            Thread.sleep(retryDelay);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("models.dev retry interrupted", exception);
+        }
     }
 
     static List<ModelData> parseCatalog(JsonNode root) {
@@ -194,13 +234,18 @@ public class ModelsDevClient implements ModelsDevCatalogClient {
         return uri;
     }
 
-    private static Map<String, String> providerMapping() {
-        Map<String, String> providers = new LinkedHashMap<>();
-        providers.put("openai", "openai");
-        providers.put("anthropic", "anthropic");
-        providers.put("google", "gemini");
-        providers.put("deepseek", "deepseek");
-        providers.put("alibaba", "qwen");
-        return Collections.unmodifiableMap(providers);
+    private static int requirePositive(int value) {
+        if (value < 1) {
+            throw new IllegalStateException("models.dev max attempts must be at least 1");
+        }
+        return value;
     }
+
+    private static Duration requireNonNegative(Duration value) {
+        if (value == null || value.isNegative()) {
+            throw new IllegalStateException("models.dev retry delay cannot be negative");
+        }
+        return value;
+    }
+
 }

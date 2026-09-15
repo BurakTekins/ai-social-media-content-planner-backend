@@ -1,7 +1,7 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.controller;
 
 import com.globalcodelabs.socialmediaplanner.application.service.AiModelService;
-import com.globalcodelabs.socialmediaplanner.domain.model.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.interfaces.rest.response.AiModelResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,7 +25,10 @@ public class AiModelController {
     ) {
         return aiModelService.findAll(capability, provider)
                 .stream()
-                .map(AiModelResponse::from)
+                .map(model -> AiModelResponse.from(
+                        model,
+                        aiModelService.supportedVideoDurations(model)
+                ))
                 .toList();
     }
 }

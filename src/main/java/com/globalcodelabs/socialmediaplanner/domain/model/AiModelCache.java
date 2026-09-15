@@ -2,6 +2,8 @@ package com.globalcodelabs.socialmediaplanner.domain.model;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
+import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
+import com.globalcodelabs.socialmediaplanner.domain.policy.DomainValidation;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -10,11 +12,14 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
@@ -28,6 +33,8 @@ import java.util.UUID;
         )
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter
+@Accessors(fluent = true)
 public class AiModelCache {
 
     @Id
@@ -48,6 +55,7 @@ public class AiModelCache {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "raw_metadata", columnDefinition = "jsonb")
+    @Getter(AccessLevel.NONE)
     private JsonNode rawMetadata;
 
     @Column(name = "last_synced_at", nullable = false)
@@ -63,7 +71,7 @@ public class AiModelCache {
     ) {
         this.id = UUID.randomUUID();
         this.providerName = requireProviderName(providerName);
-        this.modelId = requireText(modelId, "Model id cannot be blank");
+        this.modelId = DomainValidation.requireText(modelId, "Model id cannot be blank");
         this.capability = Objects.requireNonNull(capability, "Capability cannot be null");
         applySnapshot(displayName, rawMetadata, lastSyncedAt);
     }
@@ -94,32 +102,8 @@ public class AiModelCache {
         applySnapshot(displayName, rawMetadata, lastSyncedAt);
     }
 
-    public UUID id() {
-        return id;
-    }
-
-    public String providerName() {
-        return providerName;
-    }
-
-    public String modelId() {
-        return modelId;
-    }
-
-    public String displayName() {
-        return displayName;
-    }
-
-    public AiCapability capability() {
-        return capability;
-    }
-
     public JsonNode rawMetadata() {
         return rawMetadata.deepCopy();
-    }
-
-    public OffsetDateTime lastSyncedAt() {
-        return lastSyncedAt;
     }
 
     private void applySnapshot(
@@ -127,23 +111,17 @@ public class AiModelCache {
             JsonNode rawMetadata,
             OffsetDateTime lastSyncedAt
     ) {
-        this.displayName = requireText(displayName, "Display name cannot be blank");
+        this.displayName = DomainValidation.requireText(displayName, "Display name cannot be blank");
         if (rawMetadata == null || !rawMetadata.isObject()) {
             throw new DomainException("Raw model metadata must be a JSON object");
         }
         this.rawMetadata = rawMetadata.deepCopy();
-        this.lastSyncedAt = Objects.requireNonNull(lastSyncedAt, "Last synced time cannot be null");
+        this.lastSyncedAt = Objects.requireNonNull(lastSyncedAt, "Last synced time cannot be null")
+                .withOffsetSameInstant(ZoneOffset.UTC);
     }
 
     private static String requireProviderName(String providerName) {
-        return requireText(providerName, "Provider name cannot be blank")
+        return DomainValidation.requireText(providerName, "Provider name cannot be blank")
                 .toLowerCase(Locale.ROOT);
-    }
-
-    private static String requireText(String value, String message) {
-        if (value == null || value.isBlank()) {
-            throw new DomainException(message);
-        }
-        return value.trim();
     }
 }

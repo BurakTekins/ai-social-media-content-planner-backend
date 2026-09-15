@@ -1,6 +1,6 @@
 package com.globalcodelabs.socialmediaplanner.interfaces.rest.request;
 
-import com.globalcodelabs.socialmediaplanner.domain.model.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 

@@ -3,6 +3,10 @@ package com.globalcodelabs.socialmediaplanner.domain.model;
 import com.globalcodelabs.socialmediaplanner.common.exception.ContentOperationNotAllowedException;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.common.exception.InvalidContentStateTransitionException;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentStatus;
+import com.globalcodelabs.socialmediaplanner.domain.enums.ContentType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.MediaType;
+import com.globalcodelabs.socialmediaplanner.domain.enums.Platform;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
@@ -27,6 +31,7 @@ class ContentTest {
         UUID batchId = UUID.randomUUID();
 
         Content content = Content.createGenerated(
+                "Campaign 2",
                 Platform.LINKEDIN,
                 ContentType.POST,
                 "Generated content",
@@ -37,6 +42,7 @@ class ContentTest {
 
         assertThat(content.batchId()).isEqualTo(batchId);
         assertThat(content.generationIndex()).isEqualTo(2);
+        assertThat(content.title()).isEqualTo("Campaign 2");
     }
 
     @Test
@@ -73,10 +79,12 @@ class ContentTest {
     }
 
     @Test
-    void marksScheduledContentAsPublished() {
+    void marksPlatformConfirmedContentAsPublished() {
         Content content = scheduledContent();
         OffsetDateTime beforePublication = OffsetDateTime.now();
 
+        content.startPublishing(UUID.randomUUID());
+        content.recordExternalPostId("external-post-1");
         content.markPublished();
 
         assertThat(content.status()).isEqualTo(ContentStatus.PUBLISHED);
@@ -96,6 +104,42 @@ class ContentTest {
     }
 
     @Test
+    void resolvesPublicationReviewAsPublished() {
+        Content content = reviewRequiredContent();
+
+        content.markPublishedAfterReview();
+
+        assertThat(content.status()).isEqualTo(ContentStatus.PUBLISHED);
+        assertThat(content.publishedAt()).isNotNull();
+        assertThat(content.publicationCheckedAt()).isNotNull();
+        assertThat(content.failureReason()).isNull();
+    }
+
+    @Test
+    void resolvesPublicationReviewAsFailed() {
+        Content content = reviewRequiredContent();
+
+        content.markFailedAfterReview();
+
+        assertThat(content.status()).isEqualTo(ContentStatus.FAILED);
+        assertThat(content.publishedAt()).isNull();
+        assertThat(content.publicationCheckedAt()).isNotNull();
+        assertThat(content.failureReason()).isEqualTo(
+                "User marked publication as failed after manual review"
+        );
+    }
+
+    @Test
+    void rejectsManualReviewDecisionOutsideReviewRequiredState() {
+        Content content = create(Platform.LINKEDIN, ContentType.POST);
+
+        assertThatThrownBy(content::markPublishedAfterReview)
+                .isInstanceOf(InvalidContentStateTransitionException.class);
+        assertThatThrownBy(content::markFailedAfterReview)
+                .isInstanceOf(InvalidContentStateTransitionException.class);
+    }
+
+    @Test
     void rejectsInvalidStateTransitions() {
         Content draft = create(Platform.LINKEDIN, ContentType.POST);
 
@@ -109,6 +153,8 @@ class ContentTest {
                 .isInstanceOf(InvalidContentStateTransitionException.class);
 
         Content published = scheduledContent();
+        published.startPublishing(UUID.randomUUID());
+        published.recordExternalPostId("external-post-2");
         published.markPublished();
 
         assertThatThrownBy(() -> published.schedule(OffsetDateTime.now().plusHours(2)))
@@ -137,14 +183,15 @@ class ContentTest {
     void updatesOnlyDraftContent() {
         Content content = create(Platform.LINKEDIN, ContentType.POST);
 
-        content.updateDraft(" Updated content ", List.of(" updated ", "java"));
+        content.updateDraft(" Updated title ", " Updated content ", List.of(" updated ", "java"));
 
+        assertThat(content.title()).isEqualTo("Updated title");
         assertThat(content.text()).isEqualTo("Updated content");
         assertThat(content.hashtags()).containsExactly("updated", "java");
 
         content.schedule(OffsetDateTime.now().plusHours(1));
 
-        assertThatThrownBy(() -> content.updateDraft("Another text", null))
+        assertThatThrownBy(() -> content.updateDraft(null, "Another text", null))
                 .isInstanceOf(ContentOperationNotAllowedException.class);
     }
 
@@ -152,8 +199,32 @@ class ContentTest {
     void requiresAtLeastOneDraftFieldToUpdate() {
         Content content = create(Platform.LINKEDIN, ContentType.POST);
 
-        assertThatThrownBy(() -> content.updateDraft(null, null))
+        assertThatThrownBy(() -> content.updateDraft(null, null, null))
                 .isInstanceOf(DomainException.class);
+    }
+
+    @Test
+    void rejectsTwitterContentWhenTextAndHashtagsExceedCharacterLimit() {
+        String text = "x".repeat(271);
+
+        assertThatThrownBy(() -> Content.create(
+                "Twitter title",
+                Platform.TWITTER,
+                ContentType.TWEET,
+                text,
+                List.of("toolong"),
+                null
+        )).isInstanceOf(DomainException.class)
+                .hasMessageContaining("280");
+    }
+
+    @Test
+    void rejectsDraftUpdateThatExceedsTwitterCharacterLimit() {
+        Content content = create(Platform.TWITTER, ContentType.TWEET);
+
+        assertThatThrownBy(() -> content.updateDraft(null, "x".repeat(281), List.of()))
+                .isInstanceOf(DomainException.class)
+                .hasMessageContaining("280");
     }
 
     @Test
@@ -197,8 +268,15 @@ class ContentTest {
         return content;
     }
 
+    private static Content reviewRequiredContent() {
+        Content content = scheduledContent();
+        content.startPublishing(UUID.randomUUID());
+        content.requirePublicationReview("Publication confirmation timed out");
+        return content;
+    }
+
     private static Content create(Platform platform, ContentType contentType) {
-        return Content.create(platform, contentType, "Content text", List.of("social"), null);
+        return Content.create("Test content", platform, contentType, "Content text", List.of("social"), null);
     }
 
     private static void assertUnsupportedCombination(Platform platform, ContentType contentType) {

@@ -6,15 +6,29 @@ spring:
   config:
     import: optional:file:.env[.properties]
   datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: ${DB_MAX_POOL_SIZE:10}
       minimum-idle: ${DB_MIN_IDLE:2}
+      idle-timeout: ${DB_IDLE_TIMEOUT:300000}
+      connection-timeout: ${DB_CONN_TIMEOUT:30000}
+      max-lifetime: ${DB_MAX_LIFETIME:1800000}
+      validation-timeout: ${DB_VALIDATION_TIMEOUT:5000}
+      leak-detection-threshold: ${DB_LEAK_DETECTION:60000}
+      pool-name: ${DB_POOL_NAME:SocialMediaPlannerPool}
+      connection-init-sql: SET TIME ZONE 'UTC'
+  jackson:
+    time-zone: UTC
   jpa:
     show-sql: ${JPA_SHOW_SQL:false}
     properties:
       hibernate:
         format_sql: ${HIBERNATE_FORMAT_SQL:true}
+        jdbc:
+          time_zone: UTC
   flyway:
     enabled: ${FLYWAY_ENABLED:true}
     baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:false}
@@ -24,6 +38,8 @@ spring:
     multipart:
       max-file-size: ${UPLOAD_MAX_FILE_SIZE:20MB}
       max-request-size: ${UPLOAD_MAX_REQUEST_SIZE:100MB}
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
 
 app:
   security:
@@ -33,6 +49,51 @@ app:
   extraction:
     link-timeout: ${LINK_EXTRACTION_TIMEOUT:15s}
     max-body-size-bytes: ${LINK_EXTRACTION_MAX_BODY_SIZE:2097152}
+
+platform-oauth:
+  x:
+    client-id: ${X_CLIENT_ID:}
+    client-secret: ${X_CLIENT_SECRET:}
+    redirect-uri: ${X_REDIRECT_URI:http://127.0.0.1:8080/api/integrations/x/callback}
+    frontend-redirect-uri: ${X_FRONTEND_REDIRECT_URI:http://127.0.0.1:5173/#/credentials}
+    authorization-uri: ${X_AUTHORIZATION_URI:https://x.com/i/oauth2/authorize}
+    token-uri: ${X_TOKEN_URI:https://api.x.com/2/oauth2/token}
+    user-info-uri: ${X_USER_INFO_URI:https://api.x.com/2/users/me?user.fields=id,name,username}
+    scopes: ${X_SCOPES:tweet.read users.read tweet.write media.write offline.access}
+    state-ttl: ${X_OAUTH_STATE_TTL:10m}
+    connect-timeout: ${X_OAUTH_CONNECT_TIMEOUT:5s}
+    read-timeout: ${X_OAUTH_READ_TIMEOUT:30s}
+  linkedin:
+    client-id: ${LINKEDIN_CLIENT_ID:}
+    client-secret: ${LINKEDIN_CLIENT_SECRET:}
+    redirect-uri: ${LINKEDIN_REDIRECT_URI:http://127.0.0.1:8080/api/integrations/linkedin/callback}
+    frontend-redirect-uri: ${LINKEDIN_FRONTEND_REDIRECT_URI:http://127.0.0.1:5173/#/credentials}
+    authorization-uri: ${LINKEDIN_AUTHORIZATION_URI:https://www.linkedin.com/oauth/v2/authorization}
+    token-uri: ${LINKEDIN_TOKEN_URI:https://www.linkedin.com/oauth/v2/accessToken}
+    user-info-uri: ${LINKEDIN_USER_INFO_URI:https://api.linkedin.com/v2/userinfo}
+    scopes: ${LINKEDIN_SCOPES:openid profile w_member_social}
+    state-ttl: ${LINKEDIN_OAUTH_STATE_TTL:10m}
+    connect-timeout: ${LINKEDIN_OAUTH_CONNECT_TIMEOUT:5s}
+    read-timeout: ${LINKEDIN_OAUTH_READ_TIMEOUT:30s}
+  instagram:
+    client-id: ${INSTAGRAM_CLIENT_ID:}
+    client-secret: ${INSTAGRAM_CLIENT_SECRET:}
+    redirect-uri: ${INSTAGRAM_REDIRECT_URI:http://127.0.0.1:8080/api/integrations/instagram/callback}
+    frontend-redirect-uri: ${INSTAGRAM_FRONTEND_REDIRECT_URI:http://127.0.0.1:5173/#/credentials}
+    authorization-uri: ${INSTAGRAM_AUTHORIZATION_URI:https://www.instagram.com/oauth/authorize}
+    token-uri: ${INSTAGRAM_TOKEN_URI:https://api.instagram.com/oauth/access_token}
+    long-lived-token-uri: ${INSTAGRAM_LONG_LIVED_TOKEN_URI:https://graph.instagram.com/access_token}
+    refresh-token-uri: ${INSTAGRAM_REFRESH_TOKEN_URI:https://graph.instagram.com/refresh_access_token}
+    user-info-uri: ${INSTAGRAM_USER_INFO_URI:https://graph.instagram.com/v26.0/me?fields=id,user_id,username,name,account_type}
+    scopes: ${INSTAGRAM_SCOPES:instagram_business_basic instagram_business_content_publish}
+    state-ttl: ${INSTAGRAM_OAUTH_STATE_TTL:10m}
+    connect-timeout: ${INSTAGRAM_OAUTH_CONNECT_TIMEOUT:5s}
+    read-timeout: ${INSTAGRAM_OAUTH_READ_TIMEOUT:30s}
+  refresh:
+    enabled: ${SOCIAL_TOKEN_REFRESH_ENABLED:true}
+    fixed-delay: ${SOCIAL_TOKEN_REFRESH_FIXED_DELAY:1h}
+    access-token-skew: ${SOCIAL_TOKEN_REFRESH_SKEW:5m}
+    instagram-refresh-before: ${INSTAGRAM_TOKEN_REFRESH_BEFORE:7d}
 
 ai-provider:
   mode: ${AI_PROVIDER_MODE:mock}
@@ -46,18 +107,120 @@ ai-provider:
     qwen:
       base-url: ${QWEN_BASE_URL:}
       media-base-url: ${QWEN_MEDIA_BASE_URL:}
+      video-base-url: ${QWEN_VIDEO_BASE_URL:}
+      video-poll-interval: ${QWEN_VIDEO_POLL_INTERVAL:15s}
+      video-poll-timeout: ${QWEN_VIDEO_POLL_TIMEOUT:10m}
+      video-download-timeout: ${QWEN_VIDEO_DOWNLOAD_TIMEOUT:3m}
+      max-video-bytes: ${QWEN_MAX_VIDEO_BYTES:536870912}
+      max-video-redirects: ${QWEN_MAX_VIDEO_REDIRECTS:5}
     deepseek:
       base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
     gemini:
       base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+      video-poll-interval: ${GEMINI_VIDEO_POLL_INTERVAL:10s}
+      video-poll-timeout: ${GEMINI_VIDEO_POLL_TIMEOUT:7m}
+      video-download-timeout: ${GEMINI_VIDEO_DOWNLOAD_TIMEOUT:3m}
+      max-video-bytes: ${GEMINI_MAX_VIDEO_BYTES:536870912}
+      max-video-redirects: ${GEMINI_MAX_VIDEO_REDIRECTS:5}
 
 models-dev:
   api-url: ${MODELS_DEV_API_URL:https://models.dev/api.json}
   connect-timeout: ${MODELS_DEV_CONNECT_TIMEOUT:5s}
   read-timeout: ${MODELS_DEV_READ_TIMEOUT:30s}
+  max-attempts: ${MODELS_DEV_MAX_ATTEMPTS:3}
+  retry-delay: ${MODELS_DEV_RETRY_DELAY:500ms}
   sync:
     cron: "${MODELS_DEV_SYNC_CRON:0 0 3 * * *}"
-    zone: ${MODELS_DEV_SYNC_ZONE:Europe/Istanbul}
+    zone: ${MODELS_DEV_SYNC_ZONE:UTC}
+
+generation:
+  budget:
+    max-contents-per-batch: ${GENERATION_MAX_CONTENTS_PER_BATCH:50}
+    max-images-per-batch: ${GENERATION_MAX_IMAGES_PER_BATCH:50}
+    max-videos-per-batch: ${GENERATION_MAX_VIDEOS_PER_BATCH:10}
+    max-estimated-cost-usd: ${GENERATION_MAX_ESTIMATED_COST_USD:15.00}
+    estimated-input-tokens-per-item: ${GENERATION_ESTIMATED_INPUT_TOKENS_PER_ITEM:2000}
+    estimated-output-tokens-per-item: ${GENERATION_ESTIMATED_OUTPUT_TOKENS_PER_ITEM:300}
+    estimated-media-input-tokens-per-item: ${GENERATION_ESTIMATED_MEDIA_INPUT_TOKENS_PER_ITEM:500}
+    estimated-image-output-tokens-per-item: ${GENERATION_ESTIMATED_IMAGE_OUTPUT_TOKENS_PER_ITEM:1290}
+    estimated-cost-usd:
+      fallback-text-input-per-million-tokens: ${GENERATION_FALLBACK_TEXT_INPUT_USD_PER_MILLION_TOKENS:3.00}
+      fallback-text-output-per-million-tokens: ${GENERATION_FALLBACK_TEXT_OUTPUT_USD_PER_MILLION_TOKENS:15.00}
+      image-per-item: ${GENERATION_ESTIMATED_IMAGE_COST_USD:0.10}
+      video-per-item: ${GENERATION_ESTIMATED_VIDEO_COST_USD:1.00}
+  image:
+    models:
+      - provider: gemini
+        model: gemini-2.5-flash-image
+        estimated-output-tokens-per-item: 1290
+        pricing-source: GOOGLE_GEMINI_2_5_FLASH_IMAGE
+      - provider: gemini
+        model: gemini-3.1-flash-image
+        estimated-output-tokens-per-item: 1120
+        pricing-source: GOOGLE_GEMINI_3_1_FLASH_IMAGE
+      - provider: gemini
+        model: gemini-3.1-flash-image-preview
+        estimated-output-tokens-per-item: 1120
+        pricing-source: GOOGLE_GEMINI_3_1_FLASH_IMAGE
+      - provider: gemini
+        model: gemini-3.1-flash-lite-image
+        estimated-output-tokens-per-item: 1120
+        pricing-source: GOOGLE_GEMINI_3_1_FLASH_LITE_IMAGE
+      - provider: gemini
+        model: gemini-3-pro-image
+        estimated-output-tokens-per-item: 2000
+        pricing-source: GOOGLE_GEMINI_3_PRO_IMAGE_CONSERVATIVE
+      - provider: gemini
+        model: gemini-3-pro-image-preview
+        estimated-output-tokens-per-item: 2000
+        pricing-source: GOOGLE_GEMINI_3_PRO_IMAGE_CONSERVATIVE
+  video:
+    recovery:
+      enabled: ${VIDEO_ARTIFACT_RECOVERY_ENABLED:true}
+      scan-interval: ${VIDEO_ARTIFACT_RECOVERY_SCAN_INTERVAL:30s}
+      initial-backoff: ${VIDEO_ARTIFACT_RECOVERY_INITIAL_BACKOFF:30s}
+      maximum-backoff: ${VIDEO_ARTIFACT_RECOVERY_MAX_BACKOFF:30m}
+      multiplier: ${VIDEO_ARTIFACT_RECOVERY_MULTIPLIER:2.0}
+      batch-size: ${VIDEO_ARTIFACT_RECOVERY_BATCH_SIZE:20}
+    currency-to-usd:
+      CNY: ${GENERATION_CNY_TO_USD_RATE:0.14}
+    models:
+      - provider: gemini
+        model: veo-3.1-generate-preview
+        supported-duration-seconds: [4, 6, 8]
+        cost-per-second: 0.40
+        currency: USD
+        pricing-source: GOOGLE_VEO_3_1_STANDARD
+      - provider: gemini
+        model: veo-3.1-fast-generate-preview
+        supported-duration-seconds: [4, 6, 8]
+        cost-per-second: 0.10
+        currency: USD
+        pricing-source: GOOGLE_VEO_3_1_FAST_720P
+      - provider: gemini
+        model: veo-3.1-lite-generate-preview
+        supported-duration-seconds: [4, 6, 8]
+        cost-per-second: 0.05
+        currency: USD
+        pricing-source: GOOGLE_VEO_3_1_LITE_720P
+      - provider: qwen
+        model: wan2.7-t2v
+        supported-duration-seconds: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        cost-per-second: 0.733924
+        currency: CNY
+        pricing-source: ALIBABA_WAN_2_7_720P_INTERNATIONAL
+      - provider: qwen
+        model: wan2.7-t2v-2026-06-12
+        supported-duration-seconds: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        cost-per-second: 0.74942
+        currency: CNY
+        pricing-source: ALIBABA_WAN_2_7_SNAPSHOT_720P_INTERNATIONAL
+      - provider: qwen
+        model: wan2.6-t2v
+        supported-duration-seconds: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        cost-per-second: 0.733924
+        currency: CNY
+        pricing-source: ALIBABA_WAN_2_6_720P_INTERNATIONAL
 
 publishing:
   mode: ${PUBLISHING_MODE:mock}
@@ -66,7 +229,10 @@ publishing:
   max-media-bytes: ${PUBLISHING_MAX_MEDIA_BYTES:536870912}
   max-media-redirects: ${PUBLISHING_MAX_MEDIA_REDIRECTS:5}
   job:
+    enabled: ${PUBLISHING_JOB_ENABLED:true}
     fixed-delay: ${PUBLISHING_JOB_FIXED_DELAY:30s}
+    confirmation-interval: ${PUBLISHING_CONFIRMATION_INTERVAL:30s}
+    confirmation-timeout: ${PUBLISHING_CONFIRMATION_TIMEOUT:15m}
     max-items-per-run: ${PUBLISHING_JOB_MAX_ITEMS_PER_RUN:20}
   providers:
     linkedin:
@@ -90,6 +256,12 @@ publishing:
 
 server:
   port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-exception: false
+    include-message: never
+    include-binding-errors: never
 
 springdoc:
   api-docs:
@@ -113,7 +285,7 @@ management:
       probes:
         enabled: true
   health:
-    livenessstate:
+    livenessState:
       enabled: true
-    readinessstate:
+    readinessState:
       enabled: true

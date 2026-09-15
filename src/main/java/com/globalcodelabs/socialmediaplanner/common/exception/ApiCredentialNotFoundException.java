@@ -1,14 +1,10 @@
 package com.globalcodelabs.socialmediaplanner.common.exception;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ResponseStatus;
-
 import java.util.UUID;
 
-@ResponseStatus(HttpStatus.NOT_FOUND)
-public class ApiCredentialNotFoundException extends RuntimeException {
+public class ApiCredentialNotFoundException extends ApplicationException {
 
     public ApiCredentialNotFoundException(UUID credentialId) {
-        super("API credential not found: " + credentialId);
+        super(ErrorCode.API_CREDENTIAL_NOT_FOUND, "API credential not found: " + credentialId);
     }
 }
