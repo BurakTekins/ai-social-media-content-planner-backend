@@ -275,7 +275,7 @@ class GenerationBatchJobTest {
         GenerationAttempt textAttempt = succeededAttempt(
                 batch, AiCapability.TEXT, "text-model", textResult().output()
         );
-        OffsetDateTime submittedAt = OffsetDateTime.now().minusMinutes(5);
+        OffsetDateTime submittedAt = OffsetDateTime.now(java.time.ZoneOffset.UTC).minusMinutes(5);
         GenerationAttempt videoAttempt = GenerationAttempt.start(
                 batch.id(), 1, AiCapability.VIDEO, "gemini", "veo-3.1", "b".repeat(64)
         );

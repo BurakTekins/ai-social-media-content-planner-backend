@@ -3,6 +3,7 @@ package com.globalcodelabs.socialmediaplanner.application.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.globalcodelabs.socialmediaplanner.infrastructure.aimodel.ModelData;
 import com.globalcodelabs.socialmediaplanner.infrastructure.ai.AiProviderFactory;
+import com.globalcodelabs.socialmediaplanner.infrastructure.ai.video.VideoModelRegistry;
 import com.globalcodelabs.socialmediaplanner.common.exception.DomainException;
 import com.globalcodelabs.socialmediaplanner.domain.enums.AiCapability;
 import com.globalcodelabs.socialmediaplanner.domain.model.AiModelCache;
@@ -45,7 +46,9 @@ class AiModelServiceTest {
 
     @BeforeEach
     void setUp() {
-        aiModelService = new AiModelService(aiModelCacheRepository, aiProviderFactory);
+        aiModelService = new AiModelService(
+                aiModelCacheRepository, aiProviderFactory, mock(VideoModelRegistry.class)
+        );
     }
 
     @Test
@@ -155,7 +158,8 @@ class AiModelServiceTest {
         when(realModeProviderFactory.supports("openai", AiCapability.VIDEO)).thenReturn(false);
         AiModelService realModeService = new AiModelService(
                 aiModelCacheRepository,
-                realModeProviderFactory
+                realModeProviderFactory,
+                mock(VideoModelRegistry.class)
         );
 
         List<AiModelCache> result = realModeService.findAll(null, null);
