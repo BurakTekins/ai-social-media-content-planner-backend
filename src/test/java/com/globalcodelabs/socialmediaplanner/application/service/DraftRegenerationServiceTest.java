@@ -165,7 +165,8 @@ class DraftRegenerationServiceTest {
                 contentId,
                 MediaType.IMAGE,
                 "gemini",
-                "image-model"
+                "image-model",
+                null
         );
 
         assertThat(result).isSameAs(content);
